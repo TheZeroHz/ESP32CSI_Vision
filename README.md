@@ -398,6 +398,10 @@ if (!cam.begin(cfg)) { /* fail */ }
 | `06_PpaScale` | PPA resize |
 | `07_WhoPipeline` | Async consumer pipeline |
 | `idf_examples/08_FaceDetect` | ESP-DL faces (**ESP-IDF**, not Arduino IDE) |
+| `09_SdCard` | microSD mount / R-W |
+| `10_WiFiMjpegSdCapture` | Live UI + Capture Img → `/IMG` |
+| `11_H264SdRecord` | HW H.264 → `.mp4` on SD (wall-clock) |
+| `12_WiFiH264Record` | Phone-style Record/Stop → `/VIDEO/*.mp4` |
 
 Open Arduino examples via:
 

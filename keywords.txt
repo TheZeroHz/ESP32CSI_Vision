@@ -9,9 +9,13 @@ ESP32P4_Ppa	KEYWORD1
 ESP32P4_Dsp	KEYWORD1
 ESP32P4_MjpegServer	KEYWORD1
 ESP32P4_WhoPipeline	KEYWORD1
+ESP32P4_Sd	KEYWORD1
+ESP32P4_H264	KEYWORD1
 ESP32P4_FaceDetect	KEYWORD1
 camera_fb_t	KEYWORD1
 esp32p4_cam_config_t	KEYWORD1
+esp32p4_sd_config_t	KEYWORD1
+esp32p4_h264_cfg_t	KEYWORD1
 esp32p4_face_t	KEYWORD1
 
 begin	KEYWORD2
@@ -19,6 +23,10 @@ end	KEYWORD2
 capture	KEYWORD2
 release	KEYWORD2
 encode	KEYWORD2
+openMp4	KEYWORD2
+encodeToFile	KEYWORD2
+openFile	KEYWORD2
+closeFile	KEYWORD2
 decode	KEYWORD2
 setHMirror	KEYWORD2
 setVFlip	KEYWORD2
@@ -32,6 +40,13 @@ setQuality	KEYWORD2
 detect	KEYWORD2
 setTestPattern	KEYWORD2
 waitFrame	KEYWORD2
+enableSdCapture	KEYWORD2
+enableVideoRecord	KEYWORD2
+writeFile	KEYWORD2
+writeBytes	KEYWORD2
+appendFile	KEYWORD2
+readFile	KEYWORD2
+listDir	KEYWORD2
 loop	KEYWORD2
 
 ESP32P4_BOARD_GUITION_M3	LITERAL1
