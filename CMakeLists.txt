@@ -11,6 +11,8 @@ idf_component_register(
         "src/img"
         "src/ppa"
         "src/dsp"
+        "src/h264"
+        "src/sd"
         "src/stream"
         "src/who"
         "idf_src"
@@ -20,6 +22,7 @@ idf_component_register(
     REQUIRES
         arduino-esp32
         human_face_detect
+        esp_h264
     PRIV_REQUIRES
         esp_driver_cam
         esp_driver_isp

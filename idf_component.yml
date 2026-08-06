@@ -1,6 +1,6 @@
 ## ESP-IDF Component Manager manifest (ignored by Arduino IDE / arduino-cli).
 version: "3.1.0"
-description: ESP32 CSI vision — MIPI CSI, JPEG, PPA/DSP, MJPEG UI, ESP-DL face detect
+description: ESP32 CSI vision — MIPI CSI, JPEG/H.264, PPA/DSP, MJPEG UI, SD, ESP-DL face detect
 url: https://github.com/thezerohz/ESP32CSI_Vision
 repository: https://github.com/thezerohz/ESP32CSI_Vision.git
 issues: https://github.com/thezerohz/ESP32CSI_Vision/issues
@@ -16,3 +16,5 @@ dependencies:
     require: public
   espressif/human_face_detect:
     version: "^0.5.0"
+  espressif/esp_h264:
+    version: "^1.1.0"
