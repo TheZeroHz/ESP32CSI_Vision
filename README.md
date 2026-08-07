@@ -16,8 +16,6 @@ Named for **CSI + vision** — not locked to one chip. **ESP32-P4 today**; other
 [![MIPI CSI](https://img.shields.io/badge/Interface-MIPI%20CSI-orange)](https://www.espressif.com/)
 [![GitHub](https://img.shields.io/badge/GitHub-thezerohz%2FESP32CSI__Vision-black)](https://github.com/thezerohz/ESP32CSI_Vision)
 
-**Author:** [Rakib Hasan](https://github.com/thezerohz) ([@thezerohz](https://github.com/thezerohz))
-
 ---
 
 ## Table of contents
