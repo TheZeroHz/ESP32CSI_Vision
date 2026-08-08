@@ -50,6 +50,8 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .live{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#3dd68c}
 .live i{width:7px;height:7px;border-radius:50%;background:#3dd68c;display:inline-block;animation:pulse 1.2s infinite}
 @keyframes pulse{50%{opacity:.35}}
+.navlink{color:var(--acc);text-decoration:none;font-size:12px;font-weight:600;padding:4px 10px;border:1px solid #2b3b55;border-radius:8px}
+.navlink:hover{background:#243044}
 .na{opacity:.5}
 #toast{position:fixed;left:50%;bottom:calc(12px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#102033;border:1px solid #2b3b55;padding:8px 14px;border-radius:999px;display:none;font-size:12px;z-index:20;max-width:90vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
@@ -58,6 +60,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 <header>
   <h1>ESP32CSI_Vision</h1>
   <span class="live"><i></i>live</span>
+  <a id="a_files" class="navlink" href="#" style="display:none">Files</a>
   <div id="meta">connecting…</div>
 </header>
 <main>
@@ -65,6 +68,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
     <img id="stream" alt="live stream"/>
     <div class="links">
       <a id="a_stream" href="#" target="_blank">MJPEG stream</a>
+      <a id="a_files2" href="#" style="display:none">Files (SD)</a>
       <a href="/jpg" target="_blank">/jpg</a>
       <a href="/capture" target="_blank">/capture</a>
       <a href="/status" target="_blank">/status</a>
@@ -97,7 +101,12 @@ button:disabled{opacity:.45;cursor:not-allowed}
     </div>
     <div class="hint" id="sd_hint">SD capture: checking…</div>
 
-    <h2>Video record (H.264 → MP4)</h2>
+    <h2>Video record (H.264 + mic → MP4)</h2>
+    <canvas id="wave" width="640" height="72" style="width:100%;height:72px;display:block;margin:8px 0 4px;background:#0b1220;border-radius:8px"></canvas>
+    <div class="row"><label>Mic gain</label><span class="val" id="v_mic_gain">55</span>
+      <input id="mic_gain" type="range" min="0" max="100" value="55"/>
+    </div>
+    <div class="hint" id="mic_hint">Mic waveform: checking…</div>
     <div class="timer" id="rec_timer">00:00</div>
     <div class="btns single">
       <button id="btn_record" class="record" type="button" disabled>Record</button>
@@ -105,6 +114,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
     <div class="hint" id="vid_hint">Video record: checking…</div>
 
     <h2>CSI sensor (OV5647)</h2>
+    <div class="hint" id="sensor_hint">Sensor controls require OV5647. Flip updates ISP Bayer order.</div>
     <div class="row full"><label>H-Mirror</label>
       <select id="hmirror"><option value="0">Off</option><option value="1">On</option></select>
     </div>
@@ -118,11 +128,12 @@ button:disabled{opacity:.45;cursor:not-allowed}
       <select id="agc"><option value="1">Auto</option><option value="0">Manual</option></select>
     </div>
     <div class="row"><label>Exposure</label><span class="val" id="v_aec_value">100</span>
-      <input id="aec_value" type="range" min="1" max="1500" value="100"/>
+      <input id="aec_value" type="range" min="4" max="980" value="100"/>
     </div>
     <div class="row"><label>Gain</label><span class="val" id="v_agc_gain">16</span>
       <input id="agc_gain" type="range" min="0" max="1023" value="16"/>
     </div>
+    <div class="hint">Moving Exposure/Gain forces Manual AEC/AGC. Exposure max is frame length (980).</div>
     <div class="row"><label>Gain ceiling</label><span class="val" id="v_gainceiling">248</span>
       <input id="gainceiling" type="range" min="16" max="1023" value="248"/>
     </div>
@@ -155,8 +166,9 @@ async function control(varName,val){
     const r=await fetch('/control?var='+encodeURIComponent(varName)+'&val='+encodeURIComponent(val)+'&_='+Date.now(),{cache:'no-store',signal:ctrl.signal});
     clearTimeout(timer);
     if(!r.ok){toast('failed: '+varName);return}
-    toast(varName+'='+val);
-    refreshMetaOnly();
+    if(varName!=='mic_gain') toast(varName+'='+val);
+    // Mic gain updates live via /audio waveform — skip full status refresh.
+    if(varName!=='mic_gain') refreshMetaOnly();
   }catch(e){toast(e.name==='AbortError'?'timeout':'network error')}
   finally{applying=false}
 }
@@ -167,7 +179,17 @@ function bindRange(id,varName){
   el.addEventListener('input',()=>{
     sync();
     clearTimeout(debounceTimers[id]);
-    debounceTimers[id]=setTimeout(()=>control(varName,el.value),50);
+    debounceTimers[id]=setTimeout(async()=>{
+      if(varName==='aec_value'){
+        document.getElementById('aec').value='0';
+        await control('aec','0');
+      }
+      if(varName==='agc_gain'){
+        document.getElementById('agc').value='0';
+        await control('agc','0');
+      }
+      await control(varName,el.value);
+    }, varName==='mic_gain' ? 40 : 80);
   });
   sync();
 }
@@ -179,6 +201,7 @@ bindRange('frameskip','frameskip');
 bindRange('aec_value','aec_value');
 bindRange('agc_gain','agc_gain');
 bindRange('gainceiling','gainceiling');
+bindRange('mic_gain','mic_gain');
 bindSelect('framesize','framesize');
 bindSelect('hmirror','hmirror');
 bindSelect('vflip','vflip');
@@ -186,7 +209,22 @@ bindSelect('aec','aec');
 bindSelect('agc','agc');
 bindSelect('colorbar','colorbar');
 
-document.getElementById('btn_reconnect').onclick=()=>{stream.src=streamUrl+'?ts='+Date.now()};
+function reconnectStream(){stream.src=streamUrl+'?ts='+Date.now()}
+document.getElementById('btn_reconnect').onclick=reconnectStream;
+stream.onerror=()=>{setTimeout(reconnectStream,500)};
+// Auto-reconnect if MJPEG stops advancing (common after a stalled TCP send).
+let lastSentWatch=-1, stallTicks=0;
+setInterval(async()=>{
+  if(document.hidden) return;
+  try{
+    const r=await fetch('/status?_='+Date.now(),{cache:'no-store'});
+    const s=await r.json();
+    if(typeof s.sent==='number'){
+      if(s.sent===lastSentWatch){ if(++stallTicks>=4){ stallTicks=0; toast('stream stalled — reconnect'); reconnectStream(); } }
+      else { lastSentWatch=s.sent; stallTicks=0; }
+    }
+  }catch(e){}
+},2000);
 document.getElementById('btn_snap').onclick=()=>{
   // Same-origin snapshot on control port (not blocked by MJPEG).
   window.open('/capture?ts='+Date.now(),'_blank');
@@ -207,7 +245,54 @@ document.getElementById('btn_capture_img').onclick=async()=>{
   finally{btn.disabled=false}
 };
 
+const waveEl=document.getElementById('wave');
+const wctx=waveEl?waveEl.getContext('2d'):null;
+function drawWave(bins,rms,peak){
+  if(!wctx||!waveEl) return;
+  const W=waveEl.width,H=waveEl.height;
+  wctx.clearRect(0,0,W,H);
+  wctx.fillStyle='#0b1220'; wctx.fillRect(0,0,W,H);
+  const n=(bins&&bins.length)?bins.length:0;
+  if(!n){ wctx.fillStyle='#334'; wctx.fillRect(0,H/2-1,W,2); return; }
+  // Levels already include mic gain — draw 1:1 so the slider feels direct.
+  const gap=1, bw=Math.max(1,(W/n)-gap);
+  for(let i=0;i<n;i++){
+    const v=Math.max(0,Math.min(100,bins[i]|0))/100;
+    const h=Math.max(2,v*(H-8));
+    const x=i*(bw+gap);
+    const g=Math.floor(80+v*140), b=Math.floor(140+v*80);
+    wctx.fillStyle='rgb(40,'+g+','+b+')';
+    wctx.fillRect(x,(H-h)/2,bw,h);
+  }
+  wctx.fillStyle='#8ab'; wctx.font='11px monospace';
+  wctx.fillText('rms '+(rms*100).toFixed(0)+'%  peak '+(peak*100).toFixed(0)+'%',8,14);
+}
+async function tickWave(){
+  try{
+    const r=await fetch('/audio?_='+Date.now(),{cache:'no-store'});
+    if(!r.ok){
+      document.getElementById('mic_hint').textContent='Mic waveform disabled';
+      const mg=document.getElementById('mic_gain'); if(mg) mg.disabled=true;
+      return;
+    }
+    const j=await r.json();
+    const mh=document.getElementById('mic_hint');
+    const mg=document.getElementById('mic_gain');
+    if(mg) mg.disabled=!j.ok;
+    if(mh) mh.textContent=j.ok
+      ? ('Mic live @ '+(j.rate||16000)+' Hz · gain '+(j.gain!=null?j.gain: '?')+'% — fused into MP4 on Record')
+      : 'Mic not ready';
+    if(j.ok && j.gain!=null && !applying){
+      const el=document.getElementById('mic_gain'), lab=document.getElementById('v_mic_gain');
+      if(el && document.activeElement!==el){ el.value=String(j.gain); if(lab) lab.textContent=String(j.gain); }
+    }
+    drawWave(j.wave||[], j.rms||0, j.peak||0);
+  }catch(e){}
+}
+setInterval(tickWave, 90);
+
 let recording=false;
+let recBusy=false;
 function fmtMs(ms){
   ms=Math.max(0,ms|0);
   const s=Math.floor(ms/1000), m=Math.floor(s/60), r=s%60;
@@ -223,21 +308,40 @@ function setRecUi(on, elapsed){
   btn.textContent=recording?'Stop':'Record';
 }
 document.getElementById('btn_record').onclick=async()=>{
+  if(recBusy) return;
   const btn=document.getElementById('btn_record');
+  const wasRec=recording;
+  recBusy=true;
   btn.disabled=true;
+  // Immediate UI feedback — do not wait for SD/mux.
+  if(wasRec){ setRecUi(false,0); toast('Stopping…'); }
+  else { setRecUi(true,0); toast('Starting record…'); }
   try{
-    const url=recording?'/record/stop':'/record/start';
+    const url=wasRec?'/record/stop':'/record/start';
     const ctrl=new AbortController();
-    const timer=setTimeout(()=>ctrl.abort(),60000);
+    const timer=setTimeout(()=>ctrl.abort(),15000);
     const r=await fetch(url+'?_='+Date.now(),{cache:'no-store',signal:ctrl.signal});
     clearTimeout(timer);
     const j=await r.json().catch(()=>({}));
-    if(!r.ok){toast(j.error||('record failed '+r.status));return}
+    if(!r.ok){
+      setRecUi(wasRec,0); // revert
+      toast(j.error||('record failed '+r.status));
+      return;
+    }
     setRecUi(!!j.recording, j.elapsed_ms||0);
-    toast(j.recording?('recording '+ (j.path||'')):('saved '+ (j.path||'OK')));
+    if(j.recording) toast('recording '+(j.path||''));
+    else if(j.finalizing) toast('Finalizing '+(j.path||'MP4')+'…');
+    else toast('saved '+(j.path||'OK'));
+  }catch(e){
+    setRecUi(false,0);
+    toast(e.name==='AbortError'?'record timeout — is UI on port 80 (camera), not file manager?':'record error');
+  }
+  finally{
+    recBusy=false;
+    // Re-enable if video record is available (status refresh will refine).
+    btn.disabled=false;
     refreshMetaOnly();
-  }catch(e){toast(e.name==='AbortError'?'timeout':'record error')}
-  finally{btn.disabled=false}
+  }
 };
 
 function fillForm(s){
@@ -245,7 +349,15 @@ function fillForm(s){
   set('framesize',s.framesize); set('quality',s.quality); set('frameskip',s.frameskip);
   set('hmirror',s.hmirror); set('vflip',s.vflip); set('aec',s.aec); set('agc',s.agc);
   set('aec_value',s.aec_value); set('agc_gain',s.agc_gain); set('gainceiling',s.gainceiling);
-  set('colorbar',s.colorbar);
+  set('colorbar',s.colorbar); set('mic_gain',s.mic_gain);
+  const mg=document.getElementById('mic_gain'); if(mg) mg.disabled=!s.mic_ok;
+  const sh=document.getElementById('sensor_hint');
+  if(sh){
+    const name=s.sensor||'unknown';
+    sh.textContent=name.indexOf('OV5647')>=0
+      ? ('Sensor: '+name+' — flip syncs ISP Bayer; exposure max 980 lines')
+      : ('Sensor: '+name+' — mirror/AEC/AGC knobs are OV5647-only (no-op here)');
+  }
   const hint=document.getElementById('sd_hint');
   const btn=document.getElementById('btn_capture_img');
   if(s.sd_ok){
@@ -258,8 +370,8 @@ function fillForm(s){
   const vh=document.getElementById('vid_hint');
   const rb=document.getElementById('btn_record');
   if(s.video_ok){
-    vh.textContent='MP4 → '+ (s.video_folder||'/VIDEO') +'  (clips '+ (s.videos||0) +')' +
-      (s.last_video?(' · '+s.last_video):'');
+    vh.textContent='MP4 (+mic audio) → '+ (s.video_folder||'/VIDEO') +'  (clips '+ (s.videos||0) +')' +
+      (s.last_video?(' · '+s.last_video):'') + (s.mic_ok?' · mic on':' · no mic');
     rb.disabled=false;
   }else{
     vh.textContent='Video record disabled (enableVideoRecord)';
@@ -276,6 +388,7 @@ function metaText(s){
   return t;
 }
 async function refreshMetaOnly(){
+  if(recBusy) return;
   try{
     const s=await (await fetch('/status?_='+Date.now(),{cache:'no-store'})).json();
     document.getElementById('meta').textContent=metaText(s);
@@ -292,17 +405,25 @@ async function refreshMetaOnly(){
     const vh=document.getElementById('vid_hint');
     const rb=document.getElementById('btn_record');
     if(s.video_ok){
-      vh.textContent='MP4 → '+ (s.video_folder||'/VIDEO') +'  (clips '+ (s.videos||0) +')' +
-        (s.last_video?(' · '+s.last_video):'');
-      rb.disabled=false;
+      vh.textContent='MP4 (+mic audio) → '+ (s.video_folder||'/VIDEO') +'  (clips '+ (s.videos||0) +')' +
+        (s.last_video?(' · '+s.last_video):'') + (s.mic_ok?' · mic on':' · no mic') +
+        (s.finalizing?' · finalizing…':'');
+      if(!recBusy) rb.disabled=false;
     }else{
-      vh.textContent='Video record disabled (enableVideoRecord)';
+      vh.textContent='Video record disabled (enableVideoRecord) — need camera UI on port 80';
       rb.disabled=true;
     }
-    setRecUi(!!s.recording, s.rec_ms||0);
+    if(!recBusy) setRecUi(!!s.recording, s.rec_ms||0);
   }catch(e){}
 }
 async function boot(){
+  const fp=(window.CAM_FILES_PORT|0);
+  if(fp>0){
+    const u=location.protocol+'//'+location.hostname+':'+fp+'/';
+    const a1=document.getElementById('a_files'), a2=document.getElementById('a_files2');
+    if(a1){ a1.href=u; a1.style.display=''; }
+    if(a2){ a2.href=u; a2.style.display=''; }
+  }
   try{
     const s=await (await fetch('/status?_='+Date.now(),{cache:'no-store'})).json();
     fillForm(s);
@@ -410,6 +531,7 @@ bool ESP32P4_MjpegServer::begin(ESP32P4_Camera *cam, uint16_t port, uint8_t qual
   _http->on("/capture_img", HTTP_GET, [this]() { handleCaptureImg(); });
   _http->on("/record/start", HTTP_GET, [this]() { handleRecordStart(); });
   _http->on("/record/stop", HTTP_GET, [this]() { handleRecordStop(); });
+  _http->on("/audio", HTTP_GET, [this]() { handleAudio(); });
   _http->on("/status", HTTP_GET, [this]() { handleStatus(); });
   _http->on("/control", HTTP_GET, [this]() { handleControl(); });
   _http->begin();
@@ -435,7 +557,9 @@ void ESP32P4_MjpegServer::loop() {
 void ESP32P4_MjpegServer::end() {
   stopHttpTasks();
   stopWorker();
+  stopMicTask();
   disableVideoRecord();
+  disableMic();
   disableSdCapture();
   if (_http) {
     _http->stop();
@@ -595,12 +719,70 @@ bool ESP32P4_MjpegServer::enableVideoRecord(ESP32P4_Sd *sd, ESP32P4_H264 *h264, 
 void ESP32P4_MjpegServer::disableVideoRecord() {
   if (_recording) stopVideoRecord();
   _recording = false;
+  uint32_t t0 = millis();
+  while (_rec_finalizing && (millis() - t0) < 60000) vTaskDelay(pdMS_TO_TICKS(20));
   _h264 = nullptr;
   _rec_sd = nullptr;
   esp32p4_psram_free(_rec_scale_buf);
   _rec_scale_buf = nullptr;
   _rec_scale_cap = 0;
   _last_video[0] = '\0';
+}
+
+bool ESP32P4_MjpegServer::enableMic(ESP32P4_Mic *mic) {
+  if (!mic || !mic->ready()) {
+    Serial.println("MJPEG: enableMic needs ready ESP32P4_Mic");
+    return false;
+  }
+  _mic = mic;
+  if (!startMicTask()) {
+    Serial.println("MJPEG: mic task FAILED — waveform may stall HTTP");
+  }
+  Serial.printf("MJPEG: mic enabled @ %d Hz (waveform + MP4 PCM)\n", mic->sampleRate());
+  return true;
+}
+
+void ESP32P4_MjpegServer::disableMic() {
+  stopMicTask();
+  if (_mic && _mic->pcmFileOpen()) _mic->stopPcmFile();
+  _mic = nullptr;
+}
+
+bool ESP32P4_MjpegServer::startMicTask() {
+  if (_mic_task) return true;
+  if (!_mic || !_mic->ready()) return false;
+  _mic_task_run = true;
+  if (xTaskCreatePinnedToCore(micThunk, "p4cam_mic", 4096, this, 3, &_mic_task, 0) != pdPASS) {
+    _mic_task_run = false;
+    _mic_task = nullptr;
+    return false;
+  }
+  return true;
+}
+
+void ESP32P4_MjpegServer::stopMicTask() {
+  _mic_task_run = false;
+  for (int i = 0; i < 50 && _mic_task; i++) vTaskDelay(pdMS_TO_TICKS(10));
+  if (_mic_task) {
+    vTaskDelete(_mic_task);
+    _mic_task = nullptr;
+  }
+}
+
+void ESP32P4_MjpegServer::micThunk(void *arg) {
+  static_cast<ESP32P4_MjpegServer *>(arg)->micLoop();
+}
+
+void ESP32P4_MjpegServer::micLoop() {
+  while (_mic_task_run) {
+    if (_mic && _mic->ready()) {
+      // Drain a few short non-blocking-ish reads; never run on the HTTP task.
+      for (int i = 0; i < 8; i++) _mic->poll();
+    }
+    vTaskDelay(pdMS_TO_TICKS(5));
+  }
+  _mic_task = nullptr;
+  vTaskDelete(nullptr);
 }
 
 bool ESP32P4_MjpegServer::nextVideoPath(char *out, size_t out_cap) {
@@ -616,17 +798,53 @@ bool ESP32P4_MjpegServer::nextVideoPath(char *out, size_t out_cap) {
 }
 
 bool ESP32P4_MjpegServer::startVideoRecord() {
-  if (!videoRecordEnabled()) return false;
-  if (_rec_mutex) xSemaphoreTake(_rec_mutex, portMAX_DELAY);
+  if (!videoRecordEnabled()) {
+    Serial.println("MJPEG: REC start rejected (video record not enabled)");
+    return false;
+  }
+  if (_rec_finalizing) {
+    Serial.println("MJPEG: REC start rejected (still finalizing previous clip)");
+    return false;
+  }
+  if (_recording) return true;
+  if (_rec_mutex && xSemaphoreTake(_rec_mutex, pdMS_TO_TICKS(500)) != pdTRUE) {
+    Serial.println("MJPEG: REC start rejected (encoder busy)");
+    return false;
+  }
   bool ok = false;
-  if (!_recording) {
-    char path[64];
-    if (nextVideoPath(path, sizeof(path)) && _h264->openMp4(_rec_sd, path)) {
+  char path[64];
+  char pcm[64] = "";
+  if (!nextVideoPath(path, sizeof(path))) {
+    Serial.println("MJPEG: REC start failed (no free /VIDEO path)");
+  } else {
+    const char *pcm_arg = nullptr;
+    uint32_t pcm_rate = 0;
+    if (_mic && _mic->ready()) {
+      strncpy(pcm, path, sizeof(pcm) - 1);
+      pcm[sizeof(pcm) - 1] = '\0';
+      size_t n = strlen(pcm);
+      if (n >= 4) {
+        pcm[n - 4] = '\0';
+        strncat(pcm, ".pcm", sizeof(pcm) - strlen(pcm) - 1);
+      } else {
+        strncpy(pcm, "/VIDEO/rec.pcm", sizeof(pcm) - 1);
+      }
+      if (_mic->startPcmFile(_rec_sd, pcm)) {
+        pcm_arg = pcm;
+        pcm_rate = (uint32_t)_mic->sampleRate();
+      } else {
+        Serial.println("MJPEG: PCM open failed — recording video-only");
+      }
+    }
+    if (_h264->openMp4(_rec_sd, path, pcm_arg, pcm_rate)) {
       strncpy(_last_video, path, sizeof(_last_video) - 1);
       _last_video[sizeof(_last_video) - 1] = '\0';
       _recording = true;
       ok = true;
-      Serial.printf("MJPEG: REC start %s\n", path);
+      Serial.printf("MJPEG: REC start %s%s\n", path, pcm_arg ? " +mic" : "");
+    } else {
+      Serial.printf("MJPEG: openMp4 failed for %s\n", path);
+      if (_mic) _mic->stopPcmFile();
     }
   }
   if (_rec_mutex) xSemaphoreGive(_rec_mutex);
@@ -634,10 +852,13 @@ bool ESP32P4_MjpegServer::startVideoRecord() {
 }
 
 bool ESP32P4_MjpegServer::stopVideoRecord() {
-  if (_rec_mutex) xSemaphoreTake(_rec_mutex, portMAX_DELAY);
+  // Sync stop (disable / teardown). HTTP Stop uses async finalize instead.
+  if (!_recording && !_rec_finalizing) return false;
+  _recording = false;
+  if (_rec_mutex) xSemaphoreTake(_rec_mutex, pdMS_TO_TICKS(5000));
+  if (_mic) _mic->stopPcmFile();
   bool ok = false;
-  if (_recording && _h264) {
-    _recording = false;
+  if (_h264 && _h264->fileOpen()) {
     _h264->closeFile();
     if (_h264->filePath()[0]) {
       strncpy(_last_video, _h264->filePath(), sizeof(_last_video) - 1);
@@ -648,7 +869,30 @@ bool ESP32P4_MjpegServer::stopVideoRecord() {
     }
   }
   if (_rec_mutex) xSemaphoreGive(_rec_mutex);
-  return ok;
+  uint32_t t0 = millis();
+  while (_rec_finalizing && (millis() - t0) < 60000) vTaskDelay(pdMS_TO_TICKS(20));
+  return ok || !_rec_finalizing;
+}
+
+void ESP32P4_MjpegServer::finalizeRecThunk(void *arg) {
+  static_cast<ESP32P4_MjpegServer *>(arg)->finalizeVideoRecord();
+  vTaskDelete(nullptr);
+}
+
+void ESP32P4_MjpegServer::finalizeVideoRecord() {
+  if (_rec_mutex) xSemaphoreTake(_rec_mutex, portMAX_DELAY);
+  if (_h264 && _h264->fileOpen()) {
+    _h264->closeFile();
+    if (_h264->filePath()[0]) {
+      strncpy(_last_video, _h264->filePath(), sizeof(_last_video) - 1);
+      _last_video[sizeof(_last_video) - 1] = '\0';
+      _videos++;
+      Serial.printf("MJPEG: REC stop %s\n", _last_video);
+    }
+  }
+  if (_rec_mutex) xSemaphoreGive(_rec_mutex);
+  _rec_finalize_task = nullptr;
+  _rec_finalizing = false;
 }
 
 bool ESP32P4_MjpegServer::saveReadyJpegToSd(char *path_out, size_t path_cap, size_t *bytes_out) {
@@ -727,6 +971,7 @@ void ESP32P4_MjpegServer::streamHttpThunk(void *arg) {
 
 void ESP32P4_MjpegServer::controlHttpLoop() {
   while (_http_run) {
+    // Mic drain runs on p4cam_mic — keep this task HTTP-only so /record stays responsive.
     if (_http) _http->handleClient();
     vTaskDelay(1);
   }
@@ -827,6 +1072,18 @@ void ESP32P4_MjpegServer::workerLoop() {
     }
 
     const int i = _enc_idx;
+    // Do not overwrite a JPEG slot that /stream is still sending (causes freeze/tearing).
+    {
+      uint32_t wait0 = millis();
+      while (_jpg_busy[i] && _worker_run && (millis() - wait0) < 250) {
+        vTaskDelay(1);
+      }
+      if (_jpg_busy[i]) {
+        _cam->release(fb);
+        _dropped++;
+        continue;
+      }
+    }
     const uint32_t t0 = millis();
     size_t n = _jpeg.encode(rgb, ew, eh, _jpg_buf[i], _jpg_cap);
     _encode_ms = millis() - t0;
@@ -849,8 +1106,16 @@ void ESP32P4_MjpegServer::workerLoop() {
   vTaskDelete(nullptr);
 }
 
+void ESP32P4_MjpegServer::setFilesBrowserPort(uint16_t port) { _files_port = port; }
+
 void ESP32P4_MjpegServer::handleRoot() {
-  _http->send_P(200, "text/html", INDEX_HTML);
+  _http->setContentLength(CONTENT_LENGTH_UNKNOWN);
+  _http->send(200, "text/html; charset=utf-8", "");
+  char boot[96];
+  snprintf(boot, sizeof(boot),
+           "<script>window.CAM_FILES_PORT=%u;</script>", (unsigned)_files_port);
+  _http->sendContent(boot);
+  _http->sendContent_P(INDEX_HTML);
 }
 
 void ESP32P4_MjpegServer::sendJpeg(WebServer *srv) {
@@ -941,8 +1206,16 @@ void ESP32P4_MjpegServer::handleRecordStart() {
 }
 
 void ESP32P4_MjpegServer::handleRecordStop() {
-  if (!videoRecordEnabled() && !_recording) {
+  if (!videoRecordEnabled() && !_recording && !_rec_finalizing) {
     _http->send(503, "application/json", "{\"ok\":0,\"error\":\"video record not enabled\"}");
+    return;
+  }
+  if (_rec_finalizing) {
+    char buf[192];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":1,\"recording\":0,\"finalizing\":1,\"path\":\"%s\",\"videos\":%u}\n",
+             _last_video, (unsigned)_videos);
+    _http->send(200, "application/json", buf);
     return;
   }
   if (!_recording) {
@@ -952,20 +1225,46 @@ void ESP32P4_MjpegServer::handleRecordStop() {
     _http->send(200, "application/json", buf);
     return;
   }
-  if (!stopVideoRecord()) {
-    _http->send(503, "application/json", "{\"ok\":0,\"error\":\"stop/mux failed\"}");
+
+  // Stop encode immediately; mux on a side task so /record/stop returns fast.
+  _recording = false;
+  if (_rec_mutex && xSemaphoreTake(_rec_mutex, pdMS_TO_TICKS(2000)) == pdTRUE) {
+    if (_mic) _mic->stopPcmFile();
+    xSemaphoreGive(_rec_mutex);
+  } else if (_mic) {
+    _mic->stopPcmFile();
+  }
+
+  char pending[64];
+  strncpy(pending, _last_video, sizeof(pending) - 1);
+  pending[sizeof(pending) - 1] = '\0';
+
+  _rec_finalizing = true;
+  BaseType_t created =
+      xTaskCreatePinnedToCore(finalizeRecThunk, "rec_mux", 12288, this, 2, &_rec_finalize_task, 0);
+  if (created != pdPASS) {
+    _rec_finalize_task = nullptr;
+    // Fallback: sync mux on this task so the clip is not lost.
+    finalizeVideoRecord();
+    char buf[256];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":1,\"recording\":0,\"path\":\"%s\",\"bytes\":%llu,\"videos\":%u}\n",
+             _last_video, (unsigned long long)(_h264 ? _h264->fileBytes() : 0), (unsigned)_videos);
+    _http->send(200, "application/json", buf);
     return;
   }
+
   char buf[256];
   snprintf(buf, sizeof(buf),
-           "{\"ok\":1,\"recording\":0,\"path\":\"%s\",\"bytes\":%llu,\"videos\":%u}\n", _last_video,
-           (unsigned long long)(_h264 ? _h264->fileBytes() : 0), (unsigned)_videos);
+           "{\"ok\":1,\"recording\":0,\"finalizing\":1,\"path\":\"%s\",\"videos\":%u}\n", pending,
+           (unsigned)_videos);
   _http->send(200, "application/json", buf);
 }
 
 void ESP32P4_MjpegServer::handleStream() {
   WiFiClient client = _stream_http->client();
   client.setNoDelay(true);
+  client.setTimeout(1);  // seconds — avoid multi-second hangs on a dead TCP peer
   client.print(
       "HTTP/1.1 200 OK\r\n"
       "Content-Type: multipart/x-mixed-replace; boundary=frame\r\n"
@@ -975,6 +1274,7 @@ void ESP32P4_MjpegServer::handleStream() {
       "Connection: close\r\n\r\n");
 
   uint32_t last_seq = 0;
+  int held = -1;
   while (client.connected() && _http_run) {
     if (_frame_seq == last_seq) {
       if (xSemaphoreTake(_frame_sem, pdMS_TO_TICKS(200)) != pdTRUE) {
@@ -984,31 +1284,43 @@ void ESP32P4_MjpegServer::handleStream() {
     }
     last_seq = _frame_seq;
     int idx = _ready_idx;
-    if (idx < 0) continue;
+    if (idx < 0 || idx > 1) continue;
     size_t n = _jpg_len[idx];
     if (!n) continue;
+
+    _jpg_busy[idx] = 1;
+    held = idx;
 
     if (!client.printf("--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",
                        (unsigned)n)) {
       break;
     }
     size_t off = 0;
+    uint32_t send_t0 = millis();
+    int zero_streak = 0;
     while (off < n) {
       if (!client.connected()) break;
+      // Hard cap: a stuck socket must not pin this slot forever.
+      if ((millis() - send_t0) > 1500) break;
       size_t chunk = n - off;
       if (chunk > 2048) chunk = 2048;
       size_t w = client.write(_jpg_buf[idx] + off, chunk);
       if (!w) {
+        if (++zero_streak > 40) break;
         vTaskDelay(1);
-        break;
+        continue;
       }
+      zero_streak = 0;
       off += w;
     }
+    _jpg_busy[idx] = 0;
+    held = -1;
     if (off != n) break;
     if (!client.print("\r\n")) break;
     _sent++;
     _last_jpeg = n;
   }
+  if (held >= 0 && held <= 1) _jpg_busy[held] = 0;
 }
 
 void ESP32P4_MjpegServer::handleStatus() {
@@ -1022,7 +1334,7 @@ void ESP32P4_MjpegServer::handleStatus() {
   _cam->getGain(&gain);
   _cam->getGainCeiling(&ceil);
 
-  char buf[1100];
+  char buf[1200];
   snprintf(buf, sizeof(buf),
            "{\"sensor\":\"%s\",\"framesize\":%u,\"out_w\":%u,\"out_h\":%u,"
            "\"w\":%u,\"h\":%u,\"native_w\":%u,\"native_h\":%u,"
@@ -1033,7 +1345,8 @@ void ESP32P4_MjpegServer::handleStatus() {
            "\"aec_value\":%u,\"agc_gain\":%u,\"gainceiling\":%u,\"colorbar\":%u,"
            "\"sd_ok\":%u,\"sd_folder\":\"%s\",\"saved\":%u,\"last_saved\":\"%s\","
            "\"video_ok\":%u,\"video_folder\":\"%s\",\"videos\":%u,\"last_video\":\"%s\","
-           "\"recording\":%u,\"rec_ms\":%u,\"rec_frames\":%u}\n",
+           "\"recording\":%u,\"finalizing\":%u,\"rec_ms\":%u,\"rec_frames\":%u,"
+           "\"mic_ok\":%u,\"mic_rate\":%u,\"mic_gain\":%u,\"mic_rms\":%.3f,\"mic_peak\":%.3f}\n",
            _cam->sensorName(), (unsigned)_framesize, (unsigned)_out_w, (unsigned)_out_h,
            (unsigned)_out_w, (unsigned)_out_h, (unsigned)_cam->width(), (unsigned)_cam->height(),
            (unsigned)_quality, (unsigned)_frame_skip, (unsigned)_last_jpeg, (unsigned)_encode_ms,
@@ -1042,9 +1355,36 @@ void ESP32P4_MjpegServer::handleStatus() {
            agc ? 1u : 0u, (unsigned)exp, (unsigned)gain, (unsigned)ceil,
            _cam->testPattern() ? 1u : 0u, sdCaptureEnabled() ? 1u : 0u, _sd_folder,
            (unsigned)_saved, _last_saved, videoRecordEnabled() ? 1u : 0u, _video_folder,
-           (unsigned)_videos, _last_video, _recording ? 1u : 0u,
+           (unsigned)_videos, _last_video, _recording ? 1u : 0u, _rec_finalizing ? 1u : 0u,
            (unsigned)(_recording && _h264 ? _h264->recordElapsedMs() : 0),
-           (unsigned)(_recording && _h264 ? _h264->framesEncoded() : 0));
+           (unsigned)(_recording && _h264 ? _h264->framesEncoded() : 0),
+           micEnabled() ? 1u : 0u, (unsigned)(_mic ? _mic->sampleRate() : 0),
+           (unsigned)(_mic ? _mic->gain() : 0), _mic ? _mic->rms() : 0.0f,
+           _mic ? _mic->peak() : 0.0f);
+  _http->send(200, "application/json", buf);
+}
+
+void ESP32P4_MjpegServer::handleAudio() {
+  if (!micEnabled()) {
+    _http->send(503, "application/json", "{\"ok\":0,\"error\":\"mic not enabled\"}");
+    return;
+  }
+  int8_t wave[ESP32P4_MIC_WAVE_BINS];
+  _mic->copyWave(wave, ESP32P4_MIC_WAVE_BINS);
+  char buf[512];
+  size_t o = 0;
+  o += (size_t)snprintf(buf + o, sizeof(buf) - o,
+                        "{\"ok\":1,\"rate\":%d,\"gain\":%d,\"rms\":%.4f,\"peak\":%.4f,\"wave\":[",
+                        _mic->sampleRate(), _mic->gain(), (double)_mic->rms(),
+                        (double)_mic->peak());
+  for (int i = 0; i < ESP32P4_MIC_WAVE_BINS && o + 8 < sizeof(buf); i++) {
+    o += (size_t)snprintf(buf + o, sizeof(buf) - o, "%s%d", i ? "," : "", (int)wave[i]);
+  }
+  if (o + 3 < sizeof(buf)) {
+    buf[o++] = ']';
+    buf[o++] = '}';
+    buf[o] = '\0';
+  }
   _http->send(200, "application/json", buf);
 }
 
@@ -1066,6 +1406,10 @@ bool ESP32P4_MjpegServer::applyControl(const String &var, int val) {
   if (var == "agc_gain") return _cam->setGain((uint16_t)val);
   if (var == "gainceiling") return _cam->setGainCeiling((uint16_t)val);
   if (var == "colorbar" || var == "test_pattern") return _cam->setTestPattern(val != 0);
+  if (var == "mic_gain") {
+    if (!_mic || !_mic->ready()) return false;
+    return _mic->setGain(val);
+  }
   return false;
 }
 

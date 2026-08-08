@@ -8,9 +8,11 @@
  * (ESP32-P4 today; other CSI-capable SoCs later).
  *
  * Capture, PSRAM frames, HW JPEG/H.264, PPA, DSP, MJPEG UI,
- * WHO-style pipelines, microSD (SDMMC), ESP-DL face detect (IDF).
+ * WHO-style pipelines, microSD (SDMMC), bundled WebFileManager,
+ * ESP-DL face detect (IDF).
  */
 
+#include "audio/ESP32P4_Mic.h"
 #include "cam/ESP32P4_Camera.h"
 #include "dsp/ESP32P4_Dsp.h"
 #include "h264/ESP32P4_H264.h"
@@ -21,4 +23,5 @@
 #include "ppa/ESP32P4_Ppa.h"
 #include "sd/ESP32P4_Sd.h"
 #include "stream/ESP32P4_Mjpeg.h"
+#include "wfm/WebFileManager.h"
 #include "who/ESP32P4_Who.h"

@@ -218,12 +218,29 @@ bool ov5647_get_agc(uint8_t addr7, bool *out) {
   return true;
 }
 
+/* 800x640 mode table sets VTS (0x380E/0x380F) = 984. Leave a few lines of margin. */
+uint16_t ov5647_exposure_max_lines(void) { return 980; }
+
+static bool group_hold_begin(uint8_t addr7) {
+  return imx708_i2c_write8(addr7, 0x3208, 0x00);
+}
+
+static bool group_hold_launch(uint8_t addr7) {
+  if (!imx708_i2c_write8(addr7, 0x3208, 0x10)) return false;  // end group 0
+  return imx708_i2c_write8(addr7, 0x3208, 0xa0);              // launch
+}
+
 bool ov5647_set_exposure(uint8_t addr7, uint16_t lines) {
+  if (lines < 4) lines = 4;
+  if (lines > ov5647_exposure_max_lines()) lines = ov5647_exposure_max_lines();
   uint32_t raw = ((uint32_t)lines) << 4;
   if (raw > 0xFFFFF) raw = 0xFFFFF;
+  // Group-hold so 0x3500..02 update as one frame — avoids dark mid-write flicker.
+  if (!group_hold_begin(addr7)) return false;
   if (!imx708_i2c_write8(addr7, 0x3500, (uint8_t)((raw >> 16) & 0x0F))) return false;
   if (!imx708_i2c_write8(addr7, 0x3501, (uint8_t)((raw >> 8) & 0xFF))) return false;
-  return imx708_i2c_write8(addr7, 0x3502, (uint8_t)(raw & 0xFF));
+  if (!imx708_i2c_write8(addr7, 0x3502, (uint8_t)(raw & 0xFF))) return false;
+  return group_hold_launch(addr7);
 }
 
 bool ov5647_get_exposure(uint8_t addr7, uint16_t *lines) {
@@ -239,8 +256,10 @@ bool ov5647_get_exposure(uint8_t addr7, uint16_t *lines) {
 
 bool ov5647_set_gain(uint8_t addr7, uint16_t gain) {
   if (gain > 0x3FF) gain = 0x3FF;
+  if (!group_hold_begin(addr7)) return false;
   if (!imx708_i2c_write8(addr7, 0x350A, (uint8_t)((gain >> 8) & 0x03))) return false;
-  return imx708_i2c_write8(addr7, 0x350B, (uint8_t)(gain & 0xFF));
+  if (!imx708_i2c_write8(addr7, 0x350B, (uint8_t)(gain & 0xFF))) return false;
+  return group_hold_launch(addr7);
 }
 
 bool ov5647_get_gain(uint8_t addr7, uint16_t *gain) {

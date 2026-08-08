@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #include <FS.h>
 
@@ -45,8 +46,12 @@ class ESP32P4_H264 {
   size_t encode(const uint8_t *rgb565, uint16_t w, uint16_t h, uint8_t *out, size_t out_cap,
                 int *frame_type = nullptr);
 
-  /** Start recording → only .mp4 is kept after closeFile(). Path must end with .mp4 */
-  bool openMp4(ESP32P4_Sd *sd, const char *mp4_path);
+  /**
+   * Start recording → only .mp4 is kept after closeFile(). Path must end with .mp4.
+   * Optional raw PCM path is fused as a `sowt` audio track on close (then deleted).
+   */
+  bool openMp4(ESP32P4_Sd *sd, const char *mp4_path, const char *pcm_path = nullptr,
+               uint32_t pcm_rate_hz = 16000);
   /** Prefer openMp4. Raw Annex-B only if path is not .mp4. */
   bool openFile(ESP32P4_Sd *sd, const char *path);
   size_t encodeToFile(const camera_fb_t *fb);
@@ -86,4 +91,6 @@ class ESP32P4_H264 {
   uint32_t _rec_t0_ms = 0;
   char _file_path[64] = "";  // final .mp4 path
   char _tmp_path[64] = "";   // temp work file (deleted on close)
+  char _pcm_path[64] = "";   // optional raw PCM fused on close
+  uint32_t _pcm_rate = 0;
 };

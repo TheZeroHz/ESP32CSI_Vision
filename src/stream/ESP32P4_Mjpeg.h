@@ -4,6 +4,7 @@
 #include <WebServer.h>
 #include <WiFi.h>
 
+#include "audio/ESP32P4_Mic.h"
 #include "cam/ESP32P4_Camera.h"
 #include "h264/ESP32P4_H264.h"
 #include "jpeg/ESP32P4_Jpeg.h"
@@ -64,6 +65,18 @@ class ESP32P4_MjpegServer {
   const char *lastVideoPath() const { return _last_video; }
   const char *videoFolder() const { return _video_folder; }
 
+  /** Optional ES8311 mic: live waveform + PCM fused into MP4 on Record/Stop. */
+  bool enableMic(ESP32P4_Mic *mic);
+  void disableMic();
+  bool micEnabled() const { return _mic != nullptr && _mic->ready(); }
+
+  /**
+   * Show a "Files" link in the camera UI to another HTTP port (e.g. WebFileManager).
+   * Pass 0 to hide. Call before or after begin().
+   */
+  void setFilesBrowserPort(uint16_t port);
+  uint16_t filesBrowserPort() const { return _files_port; }
+
  private:
   void handleRoot();
   void handleJpg();
@@ -74,6 +87,7 @@ class ESP32P4_MjpegServer {
   void handleCaptureImg();
   void handleRecordStart();
   void handleRecordStop();
+  void handleAudio();
 
   bool startWorker();
   void stopWorker();
@@ -82,15 +96,21 @@ class ESP32P4_MjpegServer {
   static void workerThunk(void *arg);
   static void controlHttpThunk(void *arg);
   static void streamHttpThunk(void *arg);
+  static void micThunk(void *arg);
   void workerLoop();
   void controlHttpLoop();
   void streamHttpLoop();
+  void micLoop();
+  bool startMicTask();
+  void stopMicTask();
   void applyFramesizeDims();
   void sendJpeg(WebServer *srv);
   bool saveReadyJpegToSd(char *path_out, size_t path_cap, size_t *bytes_out = nullptr);
   bool nextVideoPath(char *out, size_t out_cap);
   bool startVideoRecord();
   bool stopVideoRecord();
+  void finalizeVideoRecord();
+  static void finalizeRecThunk(void *arg);
 
   bool applyControl(const String &var, int val);
 
@@ -102,6 +122,7 @@ class ESP32P4_MjpegServer {
   ESP32P4_Sd *_sd = nullptr;
   ESP32P4_Sd *_rec_sd = nullptr;
   ESP32P4_H264 *_h264 = nullptr;
+  ESP32P4_Mic *_mic = nullptr;
   uint8_t *_jpg_buf[2] = {nullptr, nullptr};
   uint8_t *_scale_buf = nullptr;
   uint8_t *_save_buf = nullptr;
@@ -111,21 +132,27 @@ class ESP32P4_MjpegServer {
   size_t _save_cap = 0;
   size_t _rec_scale_cap = 0;
   volatile size_t _jpg_len[2] = {0, 0};
+  volatile uint8_t _jpg_busy[2] = {0, 0};  // slot held by /stream send
   volatile int _ready_idx = -1;
   volatile int _enc_idx = 0;
   volatile uint32_t _frame_seq = 0;
   volatile bool _worker_run = false;
   volatile bool _http_run = false;
   volatile bool _recording = false;
+  volatile bool _rec_finalizing = false;
   TaskHandle_t _worker = nullptr;
   TaskHandle_t _control_task = nullptr;
   TaskHandle_t _stream_task = nullptr;
+  TaskHandle_t _mic_task = nullptr;
+  TaskHandle_t _rec_finalize_task = nullptr;
+  volatile bool _mic_task_run = false;
   SemaphoreHandle_t _frame_sem = nullptr;
   SemaphoreHandle_t _jpg_mutex = nullptr;
   SemaphoreHandle_t _rec_mutex = nullptr;
 
   uint16_t _port = 80;
   uint16_t _stream_port = 81;
+  uint16_t _files_port = 0;
   uint8_t _quality = 35;
   uint8_t _frame_skip = 0;
   volatile uint8_t _framesize = ESP32P4_STREAM_SVGA;

@@ -15,6 +15,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "hal/color_types.h"
+#include "hal/isp_ll.h"
 #include "mem/ESP32P4_Psram.h"
 
 static SemaphoreHandle_t s_frame_sem = nullptr;
@@ -357,14 +358,33 @@ bool ESP32P4_Camera::setTestPattern(bool enable) {
   return ov5647_set_test_pattern((uint8_t)_addr, enable);
 }
 
+bool ESP32P4_Camera::sync_isp_bayer_for_flip() {
+  // Sensor-level flip (0x3820/21 bit1) rotates the Bayer mosaic. ISP must follow
+  // or demosaic paints false color / "effect" looks. Matches Linux ov5647_get_mbus_code.
+  if (!_isp || _sensor != ESP32P4_SENSOR_OV5647) return true;
+  bool hm = false, vf = false;
+  if (!getHMirror(&hm) || !getVFlip(&vf)) return false;
+  static const color_raw_element_order_t kOrder[4] = {
+      COLOR_RAW_ELEMENT_ORDER_GBRG,  // h=0 v=0  SGBRG
+      COLOR_RAW_ELEMENT_ORDER_BGGR,  // h=1 v=0  SBGGR
+      COLOR_RAW_ELEMENT_ORDER_RGGB,  // h=0 v=1  SRGGB
+      COLOR_RAW_ELEMENT_ORDER_GRBG,  // h=1 v=1  SGRBG
+  };
+  const int idx = (hm ? 1 : 0) | ((vf ? 1 : 0) << 1);
+  isp_ll_set_bayer_mode(ISP_LL_GET_HW(0), kOrder[idx]);
+  return true;
+}
+
 bool ESP32P4_Camera::setHMirror(bool enable) {
   if (_sensor != ESP32P4_SENSOR_OV5647 || _addr <= 0) return false;
-  return ov5647_set_hmirror((uint8_t)_addr, enable);
+  if (!ov5647_set_hmirror((uint8_t)_addr, enable)) return false;
+  return sync_isp_bayer_for_flip();
 }
 
 bool ESP32P4_Camera::setVFlip(bool enable) {
   if (_sensor != ESP32P4_SENSOR_OV5647 || _addr <= 0) return false;
-  return ov5647_set_vflip((uint8_t)_addr, enable);
+  if (!ov5647_set_vflip((uint8_t)_addr, enable)) return false;
+  return sync_isp_bayer_for_flip();
 }
 
 bool ESP32P4_Camera::setAEC(bool enable) {
@@ -379,11 +399,14 @@ bool ESP32P4_Camera::setAGC(bool enable) {
 
 bool ESP32P4_Camera::setExposure(uint16_t lines) {
   if (_sensor != ESP32P4_SENSOR_OV5647 || _addr <= 0) return false;
+  // Manual exposure is ignored while AEC is still auto — force manual first.
+  if (!ov5647_set_aec((uint8_t)_addr, false)) return false;
   return ov5647_set_exposure((uint8_t)_addr, lines);
 }
 
 bool ESP32P4_Camera::setGain(uint16_t gain) {
   if (_sensor != ESP32P4_SENSOR_OV5647 || _addr <= 0) return false;
+  if (!ov5647_set_agc((uint8_t)_addr, false)) return false;
   return ov5647_set_gain((uint8_t)_addr, gain);
 }
 

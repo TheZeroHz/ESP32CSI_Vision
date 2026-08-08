@@ -95,6 +95,7 @@ class ESP32P4_Camera {
   uint16_t height() const { return _h; }
   int sensorAddress() const { return _addr; }
   bool detected() const { return _addr > 0; }
+  esp32p4_cam_sensor_t sensorType() const { return _sensor; }
   const char *sensorName() const;
   uint32_t newTransCount() const;
   uint32_t doneCount() const;
@@ -108,6 +109,7 @@ class ESP32P4_Camera {
   bool init_csi_isp();
   bool start_sensor_stream();
   bool alloc_fbs();
+  bool sync_isp_bayer_for_flip();
 
   esp32p4_cam_config_t _cfg{};
   esp32p4_cam_sensor_t _sensor = ESP32P4_SENSOR_AUTO;

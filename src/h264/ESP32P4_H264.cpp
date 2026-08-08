@@ -3,11 +3,20 @@
 #include <Arduino.h>
 #include <string.h>
 
+// HW encoder: espressif/esp_h264 is vendored under src/ (headers) + src/esp_h264/
+// for Arduino-ESP32. ESP-IDF builds use the Component Manager dependency instead.
+#if CONFIG_IDF_TARGET_ESP32P4
+#define ESP32P4_HAS_ESP_H264 1
 #include "esp_cache.h"
 #include "esp_heap_caps.h"
 #include "esp_h264_enc_single_hw.h"
 #include "h264/ESP32P4_H264Mp4.h"
 #include "mem/ESP32P4_Psram.h"
+#else
+#define ESP32P4_HAS_ESP_H264 0
+#endif
+
+#if ESP32P4_HAS_ESP_H264
 
 static inline uint8_t rgb565_r(uint16_t p) { return (uint8_t)(((p >> 11) & 0x1F) * 255 / 31); }
 static inline uint8_t rgb565_g(uint16_t p) { return (uint8_t)(((p >> 5) & 0x3F) * 255 / 63); }
@@ -298,7 +307,8 @@ bool ESP32P4_H264::endsWithIgnoreCase(const char *s, const char *suffix) const {
   return true;
 }
 
-bool ESP32P4_H264::openMp4(ESP32P4_Sd *sd, const char *mp4_path) {
+bool ESP32P4_H264::openMp4(ESP32P4_Sd *sd, const char *mp4_path, const char *pcm_path,
+                           uint32_t pcm_rate_hz) {
   closeFile();
   if (!sd || !sd->mounted() || !mp4_path) return false;
   if (!endsWithIgnoreCase(mp4_path, ".mp4")) {
@@ -333,7 +343,14 @@ bool ESP32P4_H264::openMp4(ESP32P4_Sd *sd, const char *mp4_path) {
   _rec_t0_ms = millis();
   _file_open = true;
   _mp4_mode = true;
-  Serial.printf("H264: recording MP4 -> %s\n", _file_path);
+  _pcm_path[0] = '\0';
+  _pcm_rate = 0;
+  if (pcm_path && pcm_path[0]) {
+    strncpy(_pcm_path, pcm_path, sizeof(_pcm_path) - 1);
+    _pcm_path[sizeof(_pcm_path) - 1] = '\0';
+    _pcm_rate = pcm_rate_hz ? pcm_rate_hz : 16000;
+  }
+  Serial.printf("H264: recording MP4 -> %s%s\n", _file_path, _pcm_path[0] ? " +PCM" : "");
   return true;
 }
 
@@ -400,11 +417,22 @@ void ESP32P4_H264::closeFile() {
   const uint32_t duration_ms = _rec_t0_ms ? (millis() - _rec_t0_ms) : 1;
 
   if (_mp4_mode && _sd && _tmp_path[0] && _file_path[0]) {
-    Serial.printf("H264: muxing %u frames (%.2fs wall) -> %s\n", (unsigned)_frames,
-                  duration_ms / 1000.0f, _file_path);
-    bool ok = esp32p4_h264_annexb_to_mp4(_sd->fs(), _tmp_path, _file_path, _cfg.width, _cfg.height,
-                                         duration_ms);
+    Serial.printf("H264: muxing %u frames (%.2fs wall) -> %s%s\n", (unsigned)_frames,
+                  duration_ms / 1000.0f, _file_path, _pcm_path[0] ? " +PCM" : "");
+    bool ok = false;
+    if (_pcm_path[0] && _pcm_rate) {
+      ok = esp32p4_h264_annexb_to_mp4(_sd->fs(), _tmp_path, _file_path, _cfg.width, _cfg.height,
+                                      duration_ms, _pcm_path, _pcm_rate, 1);
+    } else {
+      ok = esp32p4_h264_annexb_to_mp4(_sd->fs(), _tmp_path, _file_path, _cfg.width, _cfg.height,
+                                      duration_ms);
+    }
     _sd->remove(_tmp_path);
+    if (_pcm_path[0]) {
+      _sd->remove(_pcm_path);
+      _pcm_path[0] = '\0';
+      _pcm_rate = 0;
+    }
     if (ok) {
       File f = _sd->fs().open(_file_path, FILE_READ);
       _file_bytes = f ? f.size() : 0;
@@ -427,4 +455,71 @@ void ESP32P4_H264::closeFile() {
   _mp4_mode = false;
   _rec_t0_ms = 0;
   _tmp_path[0] = '\0';
+  _pcm_path[0] = '\0';
+  _pcm_rate = 0;
 }
+
+#else  // !ESP32P4_HAS_ESP_H264
+
+esp32p4_h264_cfg_t esp32p4_h264_cfg_default(uint16_t w, uint16_t h) {
+  esp32p4_h264_cfg_t c{};
+  c.width = (uint16_t)((w + 15) & ~15u);
+  c.height = (uint16_t)((h + 15) & ~15u);
+  if (c.width < 80) c.width = 80;
+  if (c.height < 80) c.height = 80;
+  c.fps = 15;
+  c.gop = 15;
+  c.bitrate = 400000;
+  c.qp_min = 24;
+  c.qp_max = 36;
+  return c;
+}
+
+bool ESP32P4_H264::begin(uint16_t w, uint16_t h, uint8_t fps, uint32_t bitrate) {
+  (void)w;
+  (void)h;
+  (void)fps;
+  (void)bitrate;
+  Serial.println("H264: not available on this target (ESP32-P4 + esp_h264 required)");
+  return false;
+}
+
+bool ESP32P4_H264::begin(const esp32p4_h264_cfg_t &cfg) {
+  (void)cfg;
+  return begin(0, 0, 0, 0);
+}
+
+bool ESP32P4_H264::createEncoder(bool) { return false; }
+bool ESP32P4_H264::ensureBuffers() { return false; }
+void ESP32P4_H264::end() { closeFile(); }
+bool ESP32P4_H264::convertRgb565ToHwYuv(const uint8_t *, uint16_t, uint16_t) { return false; }
+
+size_t ESP32P4_H264::processFrame(const uint8_t *, uint16_t, uint16_t, uint8_t *, size_t, int *) {
+  return 0;
+}
+
+size_t ESP32P4_H264::encode(const camera_fb_t *, uint8_t *, size_t, int *) { return 0; }
+size_t ESP32P4_H264::encode(const uint8_t *, uint16_t, uint16_t, uint8_t *, size_t, int *) {
+  return 0;
+}
+
+bool ESP32P4_H264::endsWithIgnoreCase(const char *, const char *) const { return false; }
+bool ESP32P4_H264::openMp4(ESP32P4_Sd *, const char *, const char *, uint32_t) { return false; }
+bool ESP32P4_H264::openFile(ESP32P4_Sd *, const char *) { return false; }
+size_t ESP32P4_H264::encodeToFile(const camera_fb_t *) { return 0; }
+size_t ESP32P4_H264::encodeToFile(const uint8_t *, uint16_t, uint16_t) { return 0; }
+uint32_t ESP32P4_H264::recordElapsedMs() const { return 0; }
+
+void ESP32P4_H264::closeFile() {
+  if (_file_open) {
+    _file.close();
+    _file_open = false;
+  }
+  _sd = nullptr;
+  _mp4_mode = false;
+  _rec_t0_ms = 0;
+  _file_path[0] = '\0';
+  _tmp_path[0] = '\0';
+}
+
+#endif  // ESP32P4_HAS_ESP_H264
