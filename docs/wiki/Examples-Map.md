@@ -12,6 +12,12 @@ All Arduino sketches: **File → Examples → ESP32CSI_Vision → …**
 | 06 | `06_PpaScale` | `Ppa::scale`, `Img::downsample2x565` | HW scale + CPU fallback |
 | 07 | `07_WhoPipeline` | `WhoPipeline` | Callback + `waitFrame` |
 | 08 | `idf_examples/08_FaceDetect` | `FaceDetect` | ESP-DL faces (**ESP-IDF**) |
+| 09 | `09_SdCard` | `ESP32P4_Sd` | microSD R/W |
+| 14 | `14_EthSdBrowser` | Bundled WebFileManager + Sd | Ethernet file explorer |
+| 15 | `15_MicSdRecord` | ES8311 + I2S + Sd | Mic → WAV on SD (Guition M3) |
+| 16 | `16_MicSdWebFileManager` | Mic + bundled WebFileManager | GPIO1 (or Serial `r`) records 10s into `/Recording` + web UI |
+| 17 | `17_EthH264Record` | `MjpegServer`, ETH/IP101, H264, Mic, Sd | Ethernet MJPEG + Capture Img + H.264/MP4 + mic |
+| 18 | `18_EthH264RecordFiles` | 17 + bundled WebFileManager | Camera UI ↔ SD file browser (ports 80 ↔ 82) |
 
 ---
 
@@ -76,6 +82,32 @@ stream.begin(&cam, 80, 35);
 ```
 
 Viewer:
+
+```bash
+python examples/04_WiFiMjpeg/cam_wifi_viewer.py <ip> 81
+```
+
+---
+
+## 17 — EthMjpeg
+
+Same product path as **04**, but brings up Guition M3 **IP101 Ethernet** instead of C6 Wi‑Fi, plus SD **Capture Img** → `/IMG`.
+
+**Prefs (edit sketch):**
+
+| Preference | Where |
+| --- | --- |
+| ETH PHY pins | `ETH_PHY_*` / `ETH.begin(...)` |
+| JPEG quality | `stream.begin(&cam, 80, 35)` |
+| Live knobs | UI or `/control` — see [HTTP & Preferences](HTTP-and-Preferences.md) |
+
+```cpp
+ETH.begin(...);
+stream.begin(&cam, 80, 35);
+// UI :80  stream :81
+```
+
+Viewer (reuse Wi‑Fi script):
 
 ```bash
 python examples/04_WiFiMjpeg/cam_wifi_viewer.py <ip> 81

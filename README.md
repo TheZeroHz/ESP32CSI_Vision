@@ -16,6 +16,8 @@ Named for **CSI + vision** — not locked to one chip. **ESP32-P4 today**; other
 [![MIPI CSI](https://img.shields.io/badge/Interface-MIPI%20CSI-orange)](https://www.espressif.com/)
 [![GitHub](https://img.shields.io/badge/GitHub-thezerohz%2FESP32CSI__Vision-black)](https://github.com/thezerohz/ESP32CSI_Vision)
 
+**Author:** [Rakib Hasan](https://github.com/thezerohz) ([@thezerohz](https://github.com/thezerohz))
+
 ---
 
 ## Table of contents
@@ -60,6 +62,7 @@ Named for **CSI + vision** — not locked to one chip. **ESP32-P4 today**; other
 | PPA scale / rotate / mirror | Yes | Yes |
 | Motion DSP | Yes | Yes |
 | Wi‑Fi MJPEG + live settings UI | Yes | Yes |
+| Bundled WebFileManager (SD explorer) | Yes | Yes |
 | WHO-style async frame pipeline | Yes | Yes |
 | ESP-DL human face detect | — | Yes (`idf_examples/08_FaceDetect`) |
 
@@ -391,7 +394,7 @@ if (!cam.begin(cfg)) { /* fail */ }
 | `01_CamTest` | Capture + PSRAM health |
 | `02_JpegSnapshot` | HW JPEG encode |
 | `03_JpegDecode` | Round-trip decode |
-| `04_WiFiMjpeg` | Full webcam UI + dual-port stream |
+| `04_WiFiMjpeg` | Full webcam UI + dual-port stream (Wi‑Fi) |
 | `05_MotionDetect` | Frame-difference motion ROI |
 | `06_PpaScale` | PPA resize |
 | `07_WhoPipeline` | Async consumer pipeline |
@@ -400,6 +403,12 @@ if (!cam.begin(cfg)) { /* fail */ }
 | `10_WiFiMjpegSdCapture` | Live UI + Capture Img → `/IMG` |
 | `11_H264SdRecord` | HW H.264 → `.mp4` on SD (wall-clock) |
 | `12_WiFiH264Record` | Phone-style Record/Stop → `/VIDEO/*.mp4` |
+| `13_EthernetTest` | Wired Ethernet bring-up (Guition M3) |
+| `14_EthSdBrowser` | Bundled **WebFileManager** explorer over Ethernet + SD (+ optional LittleFS) |
+| `15_MicSdRecord` | Onboard **ES8311 mic** → WAV on microSD (Guition M3) |
+| `16_MicSdWebFileManager` | GPIO1 (or Serial `r`) 10s mic record + bundled **WebFileManager** Ethernet browser |
+| `17_EthH264Record` | Ethernet MJPEG + SD stills + **H.264/MP4 record with mic audio** + waveform UI |
+| `18_EthH264RecordFiles` | Same as 17 + bundled **WebFileManager** (`Files` ↔ `Camera` nav, ports 80/82) |
 
 Open Arduino examples via:
 

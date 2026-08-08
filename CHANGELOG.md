@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.2.0
+
+- Vendor **WebFileManager** into `src/wfm/` (no separate Arduino library required).
+- Example `18_EthH264RecordFiles`: camera UI ↔ file browser navigation.
+- `MjpegServer::setFilesBrowserPort` / `WebFileManager::setHomePort` cross-links.
+
 ## 3.1.0
 
 - Rename library to **ESP32CSI_Vision** (CSI/vision brand, not SoC-locked).

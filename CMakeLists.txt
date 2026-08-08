@@ -1,5 +1,7 @@
 # ESP32CSI_Vision as an ESP-IDF component (Arduino IDE ignores this file).
-# Arduino auto-compiles only sources under src/; ESP-DL face detect lives in idf_src/.
+# Arduino auto-compiles sources under src/ recursively (including src/esp_h264/).
+# IDF SRC_DIRS are non-recursive — do NOT add src/esp_h264 here; IDF uses REQUIRES esp_h264.
+# ESP-DL face detect lives in idf_src/.
 
 idf_component_register(
     SRC_DIRS
@@ -14,6 +16,8 @@ idf_component_register(
         "src/h264"
         "src/sd"
         "src/stream"
+        "src/audio"
+        "src/wfm"
         "src/who"
         "idf_src"
     INCLUDE_DIRS
