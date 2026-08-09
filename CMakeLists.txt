@@ -1,7 +1,5 @@
-# ESP32CSI_Vision as an ESP-IDF component (Arduino IDE ignores this file).
-# Arduino auto-compiles sources under src/ recursively (including src/esp_h264/).
-# IDF SRC_DIRS are non-recursive — do NOT add src/esp_h264 here; IDF uses REQUIRES esp_h264.
-# ESP-DL face detect lives in idf_src/.
+# ESP-DL face sources are under src/espdl (Arduino compiles them from src/).
+# IDF builds also pick them up via SRC_DIRS below — no Component Registry required.
 
 idf_component_register(
     SRC_DIRS
@@ -17,16 +15,46 @@ idf_component_register(
         "src/sd"
         "src/stream"
         "src/audio"
+        "src/cv"
+        "src/vision"
         "src/wfm"
         "src/who"
-        "idf_src"
+        "src/face"
+        "src/espdl/esp-dl/dl/tool/src"
+        "src/espdl/esp-dl/dl/tensor/src"
+        "src/espdl/esp-dl/dl/base"
+        "src/espdl/esp-dl/dl/math/src"
+        "src/espdl/esp-dl/dl/model/src"
+        "src/espdl/esp-dl/dl/module/src"
+        "src/espdl/esp-dl/fbs_loader/src"
+        "src/espdl/esp-dl/vision/detect"
+        "src/espdl/esp-dl/vision/image"
+        "src/espdl/esp-dl/vision/recognition"
+        "src/espdl/esp-dl/dl/tool/isa/esp32p4"
+        "src/espdl/esp-dl/dl/base/isa/esp32p4"
+        "src/espdl/human_face_detect"
+        "src/espdl/human_face_recognition"
     INCLUDE_DIRS
         "src"
-        "idf_src"
+        "src/espdl/esp-dl/dl"
+        "src/espdl/esp-dl/dl/tool/include"
+        "src/espdl/esp-dl/dl/tensor/include"
+        "src/espdl/esp-dl/dl/base"
+        "src/espdl/esp-dl/dl/base/isa"
+        "src/espdl/esp-dl/dl/base/isa/esp32p4"
+        "src/espdl/esp-dl/dl/math/include"
+        "src/espdl/esp-dl/dl/model/include"
+        "src/espdl/esp-dl/dl/module/include"
+        "src/espdl/esp-dl/fbs_loader/include"
+        "src/espdl/esp-dl/vision/detect"
+        "src/espdl/esp-dl/vision/image"
+        "src/espdl/esp-dl/vision/recognition"
+        "src/espdl/human_face_detect"
+        "src/espdl/human_face_recognition"
     REQUIRES
         arduino-esp32
-        human_face_detect
         esp_h264
+        espressif__dl_fft
     PRIV_REQUIRES
         esp_driver_cam
         esp_driver_isp
@@ -39,4 +67,6 @@ idf_component_register(
         esp_hw_support
         freertos
         heap
+        spi_flash
+        mbedtls
 )

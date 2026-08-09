@@ -1,15 +1,25 @@
 #include <ESP32CSI_Vision.h>
 
+// Board preset (pins + LDO). Sensor defaults to ESP32P4_SENSOR_AUTO probe.
+//   GUITION_M3 / WAVESHARE_NANO → OV5647 / IMX708 common
+//   FUNCTION_EV                 → SC2336 typical
+#ifndef APP_BOARD
+#define APP_BOARD ESP32P4_BOARD_GUITION_M3
+#endif
+
 ESP32P4_Camera cam;
 
 void setup() {
   Serial.begin(115200);
   delay(1200);
   Serial.println("=== 01_CamTest ===");
-  if (!cam.begin(ESP32P4_BOARD_GUITION_M3)) {
+  Serial.println("CSI: begin AUTO probe — see Serial for registry hits");
+  if (!cam.begin(APP_BOARD)) {
     Serial.println("camera begin FAILED");
     while (true) delay(1000);
   }
+  Serial.printf("CSI: %s @ 0x%02X  %ux%u  lanes=%u\n", cam.sensorName(), cam.sensorAddress(),
+                cam.width(), cam.height(), (unsigned)cam.dataLanes());
 }
 
 void loop() {

@@ -1,5 +1,25 @@
 # Changelog
 
+## 3.4.1
+
+- **`idf_examples/21_EthFaceWeb`**: Ethernet MJPEG web UI + official ESP-DL
+  `human_face_detect` + `human_face_recognition` (enroll / recognize).
+- `ESP32P4_FaceAi` wrapper (`idf_src/`), `MjpegServer::enableFaceUi()`.
+
+## 3.4.0
+
+- **Faster CV**: PPA RGB565→GRAY8 / scale, separable blur, reused morph scratch, fast Sobel interior.
+- **Half-res detect** (pyramid) for Edge track + luma Blobs — boxes scaled ×2 (esp32-opencv style lean imgproc).
+- `ESP32P4_Ppa::cv()` helpers: `rgb565ToGray`, `rgb565ToGrayScale`, `scaleRgb565`, `fillRect565`.
+
+## 3.3.0
+
+- **OpenCV-inspired** `ESP32P4_Cv` (`src/cv/`): gray, blur, threshold, HSV `inRange`, morph, edges, `findBlobs`, draw.
+- **ESP-VISION-inspired** `ESP32P4_VisionAi` (`src/vision/`): letterbox RGB565→RGB888, NMS, softmax, det/pose structs.
+- Examples `19_CvColorBlobs`, `20_EthCvPreview` (Ethernet MJPEG + CV overlay via `setFrameHook`).
+- `MjpegServer::setFrameHook` for live annotate-before-JPEG.
+- Inspired by `micropython-opencv` + `esp-vision` (no vendored OpenCV/imlib).
+
 ## 3.2.0
 
 - Vendor **WebFileManager** into `src/wfm/` (no separate Arduino library required).

@@ -1,10 +1,12 @@
 /**
- * 17_EthH264Record — Ethernet MJPEG UI + SD stills + H.264/MP4 + mic audio
+ * 17_EthH264Record — Ethernet MJPEG UI + stills + H.264/MP4 + mic audio
  *
  * Board: Guition JC-ESP32P4-M3 (IP101 Ethernet + CSI + microSD + ES8311 mic)
  *
- * 1. Ethernet + FAT32 microSD
- * 2. Flash (ESP32P4, PSRAM Enabled, Flash 16M)
+ * APP_STORAGE: AUTO / SD / FFAT / LITTLEFS / SPIFFS (large video prefers SD).
+ *
+ * 1. Ethernet + preferred storage (SD or flash partition)
+ * 2. Flash (ESP32P4, PSRAM Enabled, Flash 16M, FAT partition if using FFat)
  * 3. Serial @ 115200 → note IP
  * 4. Browser http://<ip>/
  *      - Live MJPEG + mic waveform
@@ -15,6 +17,10 @@
  *
  * H.264 HW encoder is bundled in ESP32CSI_Vision (no separate esp_h264 library).
  */
+
+#ifndef APP_STORAGE
+#define APP_STORAGE ESP32P4_STORAGE_AUTO
+#endif
 
 #include <Arduino.h>
 
@@ -36,6 +42,7 @@ static const uint32_t ENC_BITRATE = 1500000;
 
 ESP32P4_Camera cam;
 ESP32P4_Sd sd;
+ESP32P4_StoragePref store;
 ESP32P4_H264 h264;
 ESP32P4_Mic mic;
 ESP32P4_MjpegServer stream;
@@ -70,18 +77,19 @@ void setup() {
   Serial.begin(115200);
   delay(1200);
   Serial.println("=== 17_EthH264Record (MJPEG + H.264 + mic) ===");
+  Serial.printf("APP_STORAGE pref=%s\n", ESP32P4_StoragePref::kindName(APP_STORAGE));
 
   if (!cam.begin(ESP32P4_BOARD_GUITION_M3)) {
     Serial.println("camera FAILED");
     while (true) delay(1000);
   }
 
-  if (!sd.begin(ESP32P4_BOARD_GUITION_M3)) {
-    Serial.println("SD FAILED — insert FAT32 card and reset");
+  if (!store.begin(APP_STORAGE, false, &sd, ESP32P4_BOARD_GUITION_M3)) {
+    Serial.println("Storage FAILED — insert SD or use a flash FAT/LittleFS partition");
     while (true) delay(1000);
   }
-  Serial.printf("SD ok  %llu MB\n",
-                (unsigned long long)(sd.cardSize() / (1024ULL * 1024ULL)));
+  Serial.printf("Storage %s  total=%llu KB\n", store.label(),
+                (unsigned long long)(store.totalBytes() / 1024ULL));
 
   if (!h264.begin(ENC_W, ENC_H, 30, ENC_BITRATE)) {
     Serial.println("H264 begin FAILED");
@@ -112,8 +120,8 @@ void setup() {
     while (true) delay(1000);
   }
 
-  stream.enableSdCapture(&sd, "/IMG");
-  if (!stream.enableVideoRecord(&sd, &h264, "/VIDEO")) {
+  stream.enableCapture(&store.fs(), "/IMG");
+  if (!stream.enableVideoRecord(&store.fs(), &h264, "/VIDEO")) {
     Serial.println("enableVideoRecord FAILED");
     while (true) delay(1000);
   }

@@ -10,6 +10,9 @@
  * - Files saved as /Recording/REC_00001.wav, REC_00002.wav, ...
  * - Browse / preview / download them in the web UI (audio preview supported)
  *
+ * Primary volume is SD; FFat is added as a second WFM volume when the flash
+ * FAT partition mounts (e.g. app3M_fat9M_16MB).
+ *
  * WebFileManager is bundled in ESP32CSI_Vision (no separate library).
  *
  * Serial @ 115200 · FAT32 SD · PSRAM on · Arduino-ESP32 3.x
@@ -175,6 +178,13 @@ void setup() {
   wfm.setName("Mic Archive").setPorts(80, 81);
   // wfm.setAuth("admin", "changeme");
   wfm.begin();
+#if __has_include(<FFat.h>)
+  static WfmStorageFFat ffatVol(false);
+  if (ffatVol.begin()) {
+    wfm.addVolume("FFat", ffatVol);
+    Serial.println("WFM: added secondary volume FFat");
+  }
+#endif
   wfm.startFileTask();
 
   Serial.printf("UI  http://%s/\n", net.localIP().toString().c_str());

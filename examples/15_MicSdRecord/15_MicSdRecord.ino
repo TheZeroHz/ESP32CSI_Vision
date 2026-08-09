@@ -1,5 +1,5 @@
 /**
- * 15_MicSdRecord - record Guition JC-ESP32P4-M3 mic to WAV on microSD
+ * 15_MicSdRecord - record Guition JC-ESP32P4-M3 mic to WAV on preferred storage
  *
  * Codec: onboard ES8311 (I2C 0x18) + I2S mic path
  * Pin map / init adapted from esp32-ai esp32p4/mictest.
@@ -7,9 +7,15 @@
  * Writes 16-bit mono PCM WAV @ 16 kHz to /AUDIO/REC_xxxxx.wav
  * Speaks nothing (PA off) to reduce howl while capturing.
  *
- * Serial @ 115200 · FAT32 microSD · PSRAM recommended
+ * APP_STORAGE: AUTO / SD / FFAT / LITTLEFS / SPIFFS
+ *
+ * Serial @ 115200 · PSRAM recommended
  * Board: Guition JC-ESP32P4-M3
  */
+
+#ifndef APP_STORAGE
+#define APP_STORAGE ESP32P4_STORAGE_AUTO
+#endif
 
 #include <ESP32CSI_Vision.h>
 #include <ESP_I2S.h>
@@ -20,13 +26,14 @@ static const int CHUNK = 256;
 static const uint32_t RECORD_MS = 10000;  // wall-clock capture length
 
 ESP32P4_Sd sd;
+ESP32P4_StoragePref store;
 I2SClass i2s;
 
 static bool nextWavPath(char *out, size_t out_cap) {
-  if (!sd.exists("/AUDIO") && !sd.mkdir("/AUDIO")) return false;
+  if (!store.exists("/AUDIO") && !store.mkdir("/AUDIO")) return false;
   for (uint32_t i = 1; i < 100000; i++) {
     snprintf(out, out_cap, "/AUDIO/REC_%05lu.wav", (unsigned long)i);
-    if (!sd.exists(out)) return true;
+    if (!store.exists(out)) return true;
   }
   return false;
 }
@@ -70,14 +77,15 @@ void setup() {
   Serial.begin(115200);
   delay(1200);
   Serial.println();
-  Serial.println("=== 15_MicSdRecord (ES8311 -> WAV on SD) ===");
+  Serial.println("=== 15_MicSdRecord (ES8311 -> WAV) ===");
+  Serial.printf("APP_STORAGE pref=%s\n", ESP32P4_StoragePref::kindName(APP_STORAGE));
 
-  if (!sd.begin(ESP32P4_BOARD_GUITION_M3)) {
-    Serial.println("SD FAILED - insert FAT32 card");
+  if (!store.begin(APP_STORAGE, false, &sd, ESP32P4_BOARD_GUITION_M3)) {
+    Serial.println("Storage FAILED - insert SD or use a flash partition");
     while (true) delay(1000);
   }
-  Serial.printf("SD card %llu MB\n",
-                (unsigned long long)(sd.cardSize() / (1024ULL * 1024ULL)));
+  Serial.printf("Storage %s  total=%llu KB\n", store.label(),
+                (unsigned long long)(store.totalBytes() / 1024ULL));
 
   if (!es8311_i2s_begin(i2s, SAMPLE_RATE)) {
     while (true) delay(1000);
@@ -89,7 +97,7 @@ void setup() {
     while (true) delay(1000);
   }
 
-  File wav = sd.fs().open(path, FILE_WRITE);
+  File wav = store.fs().open(path, FILE_WRITE);
   if (!wav) {
     Serial.println("open WAV FAILED");
     while (true) delay(1000);
@@ -145,7 +153,7 @@ void setup() {
   wav.close();
 
   Serial.printf("Done. %lu bytes PCM -> %s\n", (unsigned long)data_bytes, path);
-  Serial.println("Copy the WAV off the SD card, or open it via 14_EthSdBrowser.");
+  Serial.println("Copy the WAV off storage, or open it via 14_EthSdBrowser.");
 }
 
 void loop() {

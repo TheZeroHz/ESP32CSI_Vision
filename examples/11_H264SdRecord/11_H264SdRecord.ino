@@ -1,11 +1,17 @@
 /**
- * 11_H264SdRecord — CSI → HW H.264 → .mp4 on SD (no leftover .h264)
+ * 11_H264SdRecord — CSI → HW H.264 → .mp4 on preferred storage (no leftover .h264)
  *
  * Encodes as fast as the pipeline allows (no fixed fps pacing).
  * Stop after wall-clock RECORD_MS; MP4 duration matches real time.
  *
- * Serial @ 115200 · FAT32 SD · PSRAM on
+ * APP_STORAGE: AUTO / SD / FFAT / LITTLEFS / SPIFFS (large clips prefer SD).
+ *
+ * Serial @ 115200 · PSRAM on
  */
+
+#ifndef APP_STORAGE
+#define APP_STORAGE ESP32P4_STORAGE_AUTO
+#endif
 
 #include <ESP32CSI_Vision.h>
 
@@ -16,15 +22,16 @@ static const uint16_t ENC_H = 480;
 
 ESP32P4_Camera cam;
 ESP32P4_Sd sd;
+ESP32P4_StoragePref store;
 ESP32P4_Ppa ppa;
 ESP32P4_H264 h264;
 uint8_t *scaled = nullptr;
 
 static bool nextMp4Path(char *out, size_t out_cap) {
-  if (!sd.exists("/VIDEO") && !sd.mkdir("/VIDEO")) return false;
+  if (!store.exists("/VIDEO") && !store.mkdir("/VIDEO")) return false;
   for (uint32_t i = 1; i < 100000; i++) {
     snprintf(out, out_cap, "/VIDEO/VID_%05lu.mp4", (unsigned long)i);
-    if (!sd.exists(out)) return true;
+    if (!store.exists(out)) return true;
   }
   return false;
 }
@@ -33,15 +40,17 @@ void setup() {
   Serial.begin(115200);
   delay(1200);
   Serial.println("=== 11_H264SdRecord (MP4 only, wall-clock) ===");
+  Serial.printf("APP_STORAGE pref=%s\n", ESP32P4_StoragePref::kindName(APP_STORAGE));
 
   if (!cam.begin(ESP32P4_BOARD_GUITION_M3)) {
     Serial.println("camera FAILED");
     while (true) delay(1000);
   }
-  if (!sd.begin(ESP32P4_BOARD_GUITION_M3)) {
-    Serial.println("SD FAILED");
+  if (!store.begin(APP_STORAGE, false, &sd, ESP32P4_BOARD_GUITION_M3)) {
+    Serial.println("Storage FAILED");
     while (true) delay(1000);
   }
+  Serial.printf("Storage %s vfs=%s\n", store.label(), store.vfsRoot());
   if (!ppa.begin()) {
     Serial.println("PPA FAILED");
     while (true) delay(1000);
@@ -61,7 +70,7 @@ void setup() {
   }
 
   char path[48];
-  if (!nextMp4Path(path, sizeof(path)) || !h264.openMp4(&sd, path)) {
+  if (!nextMp4Path(path, sizeof(path)) || !h264.openMp4(&store.fs(), path)) {
     Serial.println("openMp4 FAILED");
     while (true) delay(1000);
   }

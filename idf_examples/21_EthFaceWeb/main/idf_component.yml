@@ -1,0 +1,10 @@
+## IDF Component Manager — Arduino-as-component + official ESP-DL face models
+dependencies:
+  espressif/arduino-esp32:
+    version: "^3.3.0"
+  espressif/human_face_detect:
+    version: "^0.5.0"
+  espressif/human_face_recognition:
+    version: "*"
+  ESP32CSI_Vision:
+    path: ../..

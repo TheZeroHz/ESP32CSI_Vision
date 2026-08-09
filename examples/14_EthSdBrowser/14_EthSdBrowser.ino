@@ -1,5 +1,5 @@
 /**
- * 14_EthSdBrowser - Web file manager over Ethernet + SD
+ * 14_EthSdBrowser - Web file manager over Ethernet + multi-volume storage
  *
  * Bundled WebFileManager (in ESP32CSI_Vision) + CSI SD helpers.
  * Board: Guition JC-ESP32P4-M3 (IP101 Ethernet + onboard microSD).
@@ -7,9 +7,10 @@
  * Open http://<board-ip>/ in a browser to browse, preview, upload,
  * download (ZIP multi-select), create, rename, move, and delete files.
  *
- * Multi-volume paths when LittleFS mounts:
+ * Multi-volume paths when flash mounts:
  *   /SD/...       microSD
- *   /LittleFS/... on-chip flash
+ *   /FFat/...     flash FAT (if partition present)
+ *   /LittleFS/... on-chip LittleFS
  *
  * Requires: Arduino-ESP32 3.x, PSRAM enabled, ESP32CSI_Vision only
  */
@@ -28,7 +29,10 @@ WfmStorageFS sdVol(
     []() -> uint64_t { return sd.totalBytes(); },
     []() -> uint64_t { return sd.usedBytes(); });
 
-// Optional second volume (on-chip flash)
+// Optional flash volumes
+#if __has_include(<FFat.h>)
+WfmStorageFFat ffatVol(false);
+#endif
 WfmStorageLittleFS flashVol(true);
 
 WfmNetwork net;
@@ -49,12 +53,17 @@ void setup() {
   Serial.printf("SD card %llu MB\n",
                 (unsigned long long)(sd.cardSize() / (1024ULL * 1024ULL)));
 
+#if __has_include(<FFat.h>)
+  if (ffatVol.begin()) {
+    wfm.addVolume("FFat", ffatVol);
+    Serial.println("Added volume /FFat");
+  }
+#endif
   if (flashVol.begin()) {
     wfm.addVolume("LittleFS", flashVol);
-    Serial.println("Volumes: /SD and /LittleFS");
-  } else {
-    Serial.println("Volumes: /SD only (LittleFS not mounted)");
+    Serial.println("Added volume /LittleFS");
   }
+  Serial.printf("WFM volumes: %u\n", (unsigned)wfm.volumeCount());
 
   // --- Network (Ethernet) ---
   net.setHostname("csi-sd-archive");

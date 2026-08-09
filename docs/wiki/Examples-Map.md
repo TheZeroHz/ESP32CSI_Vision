@@ -12,12 +12,15 @@ All Arduino sketches: **File → Examples → ESP32CSI_Vision → …**
 | 06 | `06_PpaScale` | `Ppa::scale`, `Img::downsample2x565` | HW scale + CPU fallback |
 | 07 | `07_WhoPipeline` | `WhoPipeline` | Callback + `waitFrame` |
 | 08 | `idf_examples/08_FaceDetect` | `FaceDetect` | ESP-DL faces (**ESP-IDF**) |
+| 21 | `idf_examples/21_EthFaceWeb` | `FaceAi` + MJPEG | Ethernet web UI + detect/recognize (**ESP-IDF**) |
 | 09 | `09_SdCard` | `ESP32P4_Sd` | microSD R/W |
 | 14 | `14_EthSdBrowser` | Bundled WebFileManager + Sd | Ethernet file explorer |
 | 15 | `15_MicSdRecord` | ES8311 + I2S + Sd | Mic → WAV on SD (Guition M3) |
 | 16 | `16_MicSdWebFileManager` | Mic + bundled WebFileManager | GPIO1 (or Serial `r`) records 10s into `/Recording` + web UI |
 | 17 | `17_EthH264Record` | `MjpegServer`, ETH/IP101, H264, Mic, Sd | Ethernet MJPEG + Capture Img + H.264/MP4 + mic |
 | 18 | `18_EthH264RecordFiles` | 17 + bundled WebFileManager | Camera UI ↔ SD file browser (ports 80 ↔ 82) |
+| 19 | `19_CvColorBlobs` | `ESP32P4_Cv`, `ESP32P4_VisionAi` | HSV color blobs + letterbox tensor for AI |
+| 20 | `20_EthCvPreview` | Eth + `MjpegServer` + `ESP32P4_Cv` | Live Ethernet preview with CV blob overlays |
 
 ---
 

@@ -3,7 +3,8 @@
  *
  * Board: Guition JC-ESP32P4-M3 (IP101 Ethernet + CSI + microSD + ES8311 mic)
  *
- * Same camera / H.264 / mic features as 17_EthH264Record, plus SD file browser.
+ * Same camera / H.264 / mic features as 17_EthH264Record, plus file browser.
+ * APP_STORAGE selects SD / FFat / LittleFS / SPIFFS / AUTO for capture+record.
  * WebFileManager is bundled in ESP32CSI_Vision (no separate library).
  *
  * Ports (same host IP):
@@ -12,13 +13,17 @@
  *   :82  WebFileManager UI          — click Camera → :80
  *   :83  WFM file transfers
  *
- * Avoid browsing/uploading while Record is active (shared SD card).
+ * Avoid browsing/uploading while Record is active (shared volume).
  *
- * Serial @ 115200 · FAT32 SD · PSRAM on · Arduino-ESP32 3.x
+ * Serial @ 115200 · PSRAM on · Arduino-ESP32 3.x
  */
 
 #ifndef HTTP_UPLOAD_BUFLEN
 #define HTTP_UPLOAD_BUFLEN 16384
+#endif
+
+#ifndef APP_STORAGE
+#define APP_STORAGE ESP32P4_STORAGE_AUTO
 #endif
 
 #include <Arduino.h>
@@ -45,16 +50,13 @@ static const uint16_t WFM_FILE_PORT = 83;
 
 ESP32P4_Camera cam;
 ESP32P4_Sd sd;
+ESP32P4_StoragePref store;
 ESP32P4_H264 h264;
 ESP32P4_Mic mic;
 ESP32P4_MjpegServer stream;
 
-WfmStorageFS sdVol(
-    sd.fs(), "SD",
-    []() -> uint64_t { return sd.totalBytes(); },
-    []() -> uint64_t { return sd.usedBytes(); });
-
-WebFileManager wfm(sdVol);
+WfmStorageFS *appVol = nullptr;
+WebFileManager *wfm = nullptr;
 
 static volatile bool eth_ready = false;
 
@@ -86,19 +88,26 @@ void setup() {
   Serial.begin(115200);
   delay(1200);
   Serial.println("=== 18_EthH264RecordFiles (camera + WebFileManager) ===");
+  Serial.printf("APP_STORAGE pref=%s\n", ESP32P4_StoragePref::kindName(APP_STORAGE));
 
   if (!cam.begin(ESP32P4_BOARD_GUITION_M3)) {
     Serial.println("camera FAILED");
     while (true) delay(1000);
   }
 
-  if (!sd.begin(ESP32P4_BOARD_GUITION_M3)) {
-    Serial.println("SD FAILED — insert FAT32 card and reset");
+  if (!store.begin(APP_STORAGE, false, &sd, ESP32P4_BOARD_GUITION_M3)) {
+    Serial.println("Storage FAILED — insert SD or use a flash partition");
     while (true) delay(1000);
   }
-  sdVol.begin();
-  Serial.printf("SD ok  %llu MB\n",
-                (unsigned long long)(sd.cardSize() / (1024ULL * 1024ULL)));
+  static WfmStorageFS primaryVol(
+      store.fs(), store.label(), []() -> uint64_t { return store.totalBytes(); },
+      []() -> uint64_t { return store.usedBytes(); });
+  static WebFileManager wfmMgr(primaryVol);
+  primaryVol.begin();
+  appVol = &primaryVol;
+  wfm = &wfmMgr;
+  Serial.printf("Storage %s  total=%llu KB\n", store.label(),
+                (unsigned long long)(store.totalBytes() / 1024ULL));
 
   if (!h264.begin(ENC_W, ENC_H, 30, ENC_BITRATE)) {
     Serial.println("H264 begin FAILED");
@@ -129,22 +138,42 @@ void setup() {
     while (true) delay(1000);
   }
 
-  stream.enableSdCapture(&sd, "/IMG");
-  if (!stream.enableVideoRecord(&sd, &h264, "/VIDEO")) {
+  stream.enableCapture(&store.fs(), "/IMG");
+  if (!stream.enableVideoRecord(&store.fs(), &h264, "/VIDEO")) {
     Serial.println("enableVideoRecord FAILED");
     while (true) delay(1000);
   }
   if (mic.ready()) stream.enableMic(&mic);
   stream.setFilesBrowserPort(WFM_UI_PORT);
 
-  wfm.setName("ESP32CSI Files")
+  wfm->setName("ESP32CSI Files")
       .setPorts(WFM_UI_PORT, WFM_FILE_PORT)
       .setHomePort(CAM_UI_PORT);
-  if (!wfm.begin()) {
+  if (!wfm->begin()) {
     Serial.println("WebFileManager begin FAILED");
     while (true) delay(1000);
   }
-  wfm.startFileTask();
+  wfm->startFileTask();
+#if __has_include(<FFat.h>)
+  if (store.kind() == ESP32P4_STORAGE_SD) {
+    static WfmStorageFFat ffatVol(false);
+    if (ffatVol.begin()) {
+      wfm->addVolume("FFat", ffatVol);
+      Serial.println("WFM: added secondary volume FFat");
+    }
+  }
+#endif
+  if (store.kind() != ESP32P4_STORAGE_SD) {
+    if (!sd.mounted()) sd.begin(ESP32P4_BOARD_GUITION_M3);
+    if (sd.mounted()) {
+      static WfmStorageFS sdVol(
+          sd.fs(), "SD", []() -> uint64_t { return sd.totalBytes(); },
+          []() -> uint64_t { return sd.usedBytes(); });
+      sdVol.begin();
+      wfm->addVolume("SD", sdVol);
+      Serial.println("WFM: added secondary volume SD");
+    }
+  }
 
   IPAddress ip = ETH.localIP();
   Serial.printf("Camera  http://%s/          (Files → :%u)\n", ip.toString().c_str(),
@@ -158,7 +187,7 @@ void setup() {
 
 void loop() {
   stream.loop();
-  if (!stream.isRecording()) wfm.loop();
+  if (wfm && !stream.isRecording()) wfm->loop();
 
   static uint32_t last = 0;
   if (millis() - last >= 3000) {
