@@ -1,7 +1,9 @@
 #include "stream/ESP32P4_Mjpeg.h"
 
+#include "img/ESP32P4_Img.h"
 #include "mem/ESP32P4_Psram.h"
 
+#include <ctype.h>
 #include <esp_wifi.h>
 #include <string.h>
 
@@ -13,47 +15,65 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <title>ESP32CSI_Vision</title>
 <style>
-:root{--bg:#0b1220;--card:#141c2b;--fg:#e8eef7;--muted:#8b9bb4;--acc:#3d8bfd;--line:#243044;--pad:clamp(8px,2.5vw,16px)}
+:root{--bg:#0a0e14;--card:#121820;--fg:#e6edf5;--muted:#7d8fa3;--acc:#3d8bfd;--line:#1e2a38;--pad:10px;--face-ok:#2eb87a;--face-det:#6b9bb0;--face-warn:#c4a35a;--r:3px}
 *{box-sizing:border-box}
-html,body{margin:0;min-height:100%;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-body{padding-bottom:env(safe-area-inset-bottom)}
-header{position:sticky;top:0;z-index:5;padding:var(--pad) calc(var(--pad) + env(safe-area-inset-right)) var(--pad) calc(var(--pad) + env(safe-area-inset-left));background:rgba(11,18,32,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:8px 14px;align-items:baseline}
-header h1{margin:0;font-size:clamp(16px,4vw,20px);font-weight:650}
-#meta{color:var(--muted);font-size:clamp(11px,2.8vw,12px);word-break:break-word;flex:1 1 200px}
-main{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(260px,360px);gap:var(--pad);padding:var(--pad);padding-left:calc(var(--pad) + env(safe-area-inset-left));padding-right:calc(var(--pad) + env(safe-area-inset-right));align-items:start}
-@media (max-width:860px){main{grid-template-columns:1fr}}
-.view,.panel{background:var(--card);border-radius:12px;padding:var(--pad);min-width:0}
-.view img{width:100%;max-height:min(70vh,720px);height:auto;object-fit:contain;border-radius:8px;background:#000;display:block}
-.links{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-.links a{color:var(--acc);text-decoration:none;font-size:12px}
-.panel{max-height:min(78vh,900px);overflow:auto;-webkit-overflow-scrolling:touch}
-.panel h2{margin:16px 0 8px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
-.panel h2:first-child{margin-top:0}
-.row{display:grid;grid-template-columns:1fr auto;gap:6px 10px;align-items:center;margin:10px 0}
-.row label{font-size:13px}
-.row .val{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12px;min-width:2.5em;text-align:right}
-.row .hint{grid-column:1/-1;color:var(--muted);font-size:11px}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:13px/1.35 "Segoe UI","Helvetica Neue",sans-serif;overflow:hidden}
+body{display:flex;flex-direction:column;padding-bottom:0}
+header{flex:0 0 auto;z-index:5;padding:8px 12px;background:rgba(10,14,20,.95);border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}
+header h1{margin:0;font-size:15px;font-weight:650;letter-spacing:.04em}
+#meta{color:var(--muted);font-size:11px;word-break:break-word;flex:1 1 160px;font-family:ui-monospace,"Cascadia Mono",Consolas,monospace}
+main{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(0,1.45fr) minmax(280px,340px);gap:10px;padding:10px;align-items:stretch}
+@media (max-width:860px){html,body{overflow:auto;height:auto}main{grid-template-columns:1fr;height:auto}}
+.view,.panel{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:10px;min-width:0;min-height:0}
+.view{display:flex;flex-direction:column;gap:6px}
+.stage{flex:1 1 auto;min-height:0;background:#000;border-radius:4px;overflow:hidden;line-height:0;display:flex;align-items:center;justify-content:center;isolation:isolate;contain:paint}
+.view img{width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;object-position:center;display:block;background:#000;border:0}
+.links{display:flex;flex-wrap:wrap;gap:6px}
+.links a{color:var(--acc);text-decoration:none;font-size:11px}
+.panel{display:flex;flex-direction:column;overflow:hidden;max-height:calc(100vh - 56px)}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px;flex:0 0 auto}
+.tabs button{padding:7px 4px;font-size:11px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;background:#0a1018;color:var(--muted);border:1px solid var(--line);border-radius:var(--r);cursor:pointer}
+.tabs button.on{color:var(--fg);border-color:var(--face-det);background:#15202b}
+.tabpane{display:none;flex:1 1 auto;min-height:0;overflow:auto;padding-right:2px}
+.tabpane.on{display:block}
+.panel h2{margin:0 0 6px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
+.row{display:grid;grid-template-columns:1fr auto;gap:4px 8px;align-items:center;margin:6px 0}
+.row label{font-size:12px}
+.row .val{font-variant-numeric:tabular-nums;color:var(--muted);font-size:11px;min-width:2.2em;text-align:right}
+.row .hint,.hint{grid-column:1/-1;color:var(--muted);font-size:10px;margin:2px 0 4px;line-height:1.3}
 .row.full{grid-template-columns:1fr}
-input[type=range]{width:100%;grid-column:1/-1;accent-color:var(--acc)}
-select,button{width:100%;background:#0f1726;color:var(--fg);border:1px solid #2b3b55;border-radius:8px;padding:10px 12px;font-size:14px}
+input[type=range]{width:100%;grid-column:1/-1;accent-color:var(--acc);height:18px;margin:0}
+select,button,.field{width:100%;background:#0a1018;color:var(--fg);border:1px solid #2b3b55;border-radius:var(--r);padding:7px 9px;font-size:12px}
 .row select{grid-column:1/-1}
-.btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
 .btns.single{grid-template-columns:1fr}
 button{cursor:pointer;background:var(--acc);border:none;font-weight:600}
-button.secondary{background:#243044}
+button.secondary{background:#1a2433;border:1px solid #2b3b55}
 button.capture{background:#2f9e64}
-button.record{background:#e03535}
-button.recording{background:#8b1e1e;animation:recpulse 1s infinite}
+button.record{background:#c0392b}
+button.recording{background:#7a1c1c;animation:recpulse 1s infinite}
 @keyframes recpulse{50%{filter:brightness(1.25)}}
-.timer{font-variant-numeric:tabular-nums;font-size:22px;font-weight:650;letter-spacing:.04em;text-align:center;margin:6px 0 2px}
+.timer{font-variant-numeric:tabular-nums;font-size:18px;font-weight:650;letter-spacing:.04em;text-align:center;margin:4px 0}
 button:disabled{opacity:.45;cursor:not-allowed}
 .live{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#3dd68c}
 .live i{width:7px;height:7px;border-radius:50%;background:#3dd68c;display:inline-block;animation:pulse 1.2s infinite}
 @keyframes pulse{50%{opacity:.35}}
-.navlink{color:var(--acc);text-decoration:none;font-size:12px;font-weight:600;padding:4px 10px;border:1px solid #2b3b55;border-radius:8px}
-.navlink:hover{background:#243044}
+.navlink{color:var(--acc);text-decoration:none;font-size:11px;font-weight:600;padding:3px 8px;border:1px solid #2b3b55;border-radius:var(--r)}
+.navlink:hover{background:#1a2433}
 .na{opacity:.5}
-#toast{position:fixed;left:50%;bottom:calc(12px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#102033;border:1px solid #2b3b55;padding:8px 14px;border-radius:999px;display:none;font-size:12px;z-index:20;max-width:90vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#toast{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);background:#102033;border:1px solid #2b3b55;padding:7px 12px;border-radius:999px;display:none;font-size:11px;z-index:20;max-width:90vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.swrow{display:flex;gap:8px;margin:6px 0 8px}
+.sw{flex:1;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:#0a1018;border:1px solid var(--line);border-radius:var(--r);cursor:pointer;user-select:none}
+.sw span{font-size:12px;font-weight:600;letter-spacing:.04em}
+.sw input{appearance:none;width:34px;height:18px;border-radius:9px;background:#2a3648;position:relative;outline:none;cursor:pointer;flex:0 0 auto;margin:0;border:none}
+.sw input:checked{background:var(--face-ok)}
+.sw input::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .15s}
+.sw input:checked::after{left:18px}
+.sw input:disabled{opacity:.4;cursor:not-allowed}
+.face_status{font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:.03em;color:var(--face-ok);background:#0a1018;border:1px solid #2a3648;border-radius:var(--r);padding:6px 8px;margin:0 0 8px;line-height:1.35}
+#btn_face_enroll{background:#1f6b4a}
+#wave{width:100%;height:48px;display:block;margin:4px 0;background:#0a1018;border-radius:var(--r)}
+.compact .row{margin:4px 0}
 </style>
 </head>
 <body>
@@ -65,85 +85,197 @@ button:disabled{opacity:.45;cursor:not-allowed}
 </header>
 <main>
   <section class="view">
-    <img id="stream" alt="live stream"/>
+    <div class="stage"><img id="stream" alt="live stream"/></div>
     <div class="links">
-      <a id="a_stream" href="#" target="_blank">MJPEG stream</a>
-      <a id="a_files2" href="#" style="display:none">Files (SD)</a>
+      <a id="a_stream" href="#" target="_blank">MJPEG</a>
+      <a id="a_files2" href="#" style="display:none">Files</a>
       <a href="/jpg" target="_blank">/jpg</a>
       <a href="/capture" target="_blank">/capture</a>
       <a href="/status" target="_blank">/status</a>
     </div>
   </section>
-  <section class="panel">
-    <h2>Stream (applies instantly)</h2>
-    <div class="row full"><label>Resolution</label>
-      <select id="framesize">
-        <option value="0">SVGA 800×640 (native)</option>
-        <option value="1">VGA 640×480</option>
-        <option value="2">HVGA 480×320</option>
-        <option value="3">QVGA 320×240</option>
-        <option value="4">QQVGA 160×120</option>
-      </select>
-      <div class="hint">Live PPA scale. Lower = smoother. Sensor stays native CSI size.</div>
-    </div>
-    <div class="row"><label>JPEG quality</label><span class="val" id="v_quality">35</span>
-      <input id="quality" type="range" min="4" max="63" value="35"/>
-    </div>
-    <div class="row"><label>Frame skip</label><span class="val" id="v_frameskip">0</span>
-      <input id="frameskip" type="range" min="0" max="4" value="0"/>
-    </div>
-    <div class="btns">
-      <button id="btn_reconnect" class="secondary" type="button">Reconnect</button>
-      <button id="btn_snap" class="secondary" type="button">Snapshot</button>
-    </div>
-    <div class="btns single">
-      <button id="btn_capture_img" class="capture" type="button">Capture Img</button>
-    </div>
-    <div class="hint" id="sd_hint">SD capture: checking…</div>
-
-    <h2>Video record (H.264 + mic → MP4)</h2>
-    <canvas id="wave" width="640" height="72" style="width:100%;height:72px;display:block;margin:8px 0 4px;background:#0b1220;border-radius:8px"></canvas>
-    <div class="row"><label>Mic gain</label><span class="val" id="v_mic_gain">55</span>
-      <input id="mic_gain" type="range" min="0" max="100" value="55"/>
-    </div>
-    <div class="hint" id="mic_hint">Mic waveform: checking…</div>
-    <div class="timer" id="rec_timer">00:00</div>
-    <div class="btns single">
-      <button id="btn_record" class="record" type="button" disabled>Record</button>
-    </div>
-    <div class="hint" id="vid_hint">Video record: checking…</div>
-
-    <h2>CSI sensor (OV5647)</h2>
-    <div class="hint" id="sensor_hint">Sensor controls require OV5647. Flip updates ISP Bayer order.</div>
-    <div class="row full"><label>H-Mirror</label>
-      <select id="hmirror"><option value="0">Off</option><option value="1">On</option></select>
-    </div>
-    <div class="row full"><label>V-Flip</label>
-      <select id="vflip"><option value="0">Off</option><option value="1">On</option></select>
-    </div>
-    <div class="row full"><label>AEC (auto exposure)</label>
-      <select id="aec"><option value="1">Auto</option><option value="0">Manual</option></select>
-    </div>
-    <div class="row full"><label>AGC (auto gain)</label>
-      <select id="agc"><option value="1">Auto</option><option value="0">Manual</option></select>
-    </div>
-    <div class="row"><label>Exposure</label><span class="val" id="v_aec_value">100</span>
-      <input id="aec_value" type="range" min="4" max="980" value="100"/>
-    </div>
-    <div class="row"><label>Gain</label><span class="val" id="v_agc_gain">16</span>
-      <input id="agc_gain" type="range" min="0" max="1023" value="16"/>
-    </div>
-    <div class="hint">Moving Exposure/Gain forces Manual AEC/AGC. Exposure max is frame length (980).</div>
-    <div class="row"><label>Gain ceiling</label><span class="val" id="v_gainceiling">248</span>
-      <input id="gainceiling" type="range" min="16" max="1023" value="248"/>
-    </div>
-    <div class="row full"><label>Test pattern</label>
-      <select id="colorbar"><option value="0">Off</option><option value="1">On</option></select>
+  <section class="panel compact">
+    <div class="tabs" id="side_tabs">
+      <button type="button" data-tab="tab_stream" class="on">Stream</button>
+      <button type="button" data-tab="tab_face" id="tabbtn_face">Face</button>
+      <button type="button" data-tab="tab_rec">Record</button>
+      <button type="button" data-tab="tab_sensor">Sensor</button>
     </div>
 
-    <h2 class="na">Not on CSI</h2>
-    <div class="row na full"><label>Brightness / contrast / AWB / effects</label>
-      <div class="hint">DVP esp32-camera knobs do not apply to MIPI CSI.</div>
+    <div id="tab_stream" class="tabpane on">
+      <h2>Stream</h2>
+      <div class="row full"><label>Resolution</label>
+        <select id="framesize">
+          <option value="0">1920×1088 FHD</option>
+          <option value="1" selected>1280×720 HD</option>
+          <option value="2">1024×576</option>
+          <option value="3">800×448</option>
+          <option value="4">640×368</option>
+          <option value="5">480×272</option>
+          <option value="6">400×224</option>
+          <option value="7">320×176</option>
+          <option value="8">240×128</option>
+          <option value="9">160×96</option>
+        </select>
+        <div class="hint" id="fs_hint">÷16 sizes · letterbox fit</div>
+      </div>
+      <div class="row"><label>JPEG q</label><span class="val" id="v_quality">35</span>
+        <input id="quality" type="range" min="4" max="63" value="35"/>
+      </div>
+      <div class="row"><label>Skip</label><span class="val" id="v_frameskip">0</span>
+        <input id="frameskip" type="range" min="0" max="4" value="0"/>
+      </div>
+      <div class="btns">
+        <button id="btn_reconnect" class="secondary" type="button">Reconnect</button>
+        <button id="btn_snap" class="secondary" type="button">Snapshot</button>
+      </div>
+      <div class="btns single">
+        <button id="btn_capture_img" class="capture" type="button">Capture → SD</button>
+      </div>
+      <div class="hint" id="sd_hint">SD…</div>
+
+      <div id="cv_panel" style="display:none">
+      <h2>CV</h2>
+      <div class="hint" id="cv_hint">OpenCV-like live tests</div>
+      <div class="row full"><label>Mode</label>
+        <select id="cv_mode">
+          <option value="0">Off</option>
+          <option value="7" selected>Edge track</option>
+          <option value="1">Blobs</option>
+          <option value="2">Mask</option>
+          <option value="3">Edges</option>
+          <option value="4">Threshold</option>
+          <option value="5">Gray</option>
+          <option value="6">Blur</option>
+        </select>
+      </div>
+      <div class="row full"><label>Preset</label>
+        <select id="cv_preset">
+          <option value="6">Dark</option>
+          <option value="8" selected>Coins</option>
+          <option value="7">Light</option>
+          <option value="1">Any</option>
+          <option value="2">Red</option>
+          <option value="3">Green</option>
+          <option value="4">Blue</option>
+          <option value="5">Yellow</option>
+          <option value="0">Custom</option>
+        </select>
+      </div>
+      <div class="row"><label>H lo</label><span class="val" id="v_cv_h_lo">0</span>
+        <input id="cv_h_lo" type="range" min="0" max="179" value="0"/>
+      </div>
+      <div class="row"><label>H hi</label><span class="val" id="v_cv_h_hi">179</span>
+        <input id="cv_h_hi" type="range" min="0" max="179" value="179"/>
+      </div>
+      <div class="row"><label>S lo</label><span class="val" id="v_cv_s_lo">40</span>
+        <input id="cv_s_lo" type="range" min="0" max="255" value="40"/>
+      </div>
+      <div class="row"><label>S hi</label><span class="val" id="v_cv_s_hi">255</span>
+        <input id="cv_s_hi" type="range" min="0" max="255" value="255"/>
+      </div>
+      <div class="row"><label>V lo</label><span class="val" id="v_cv_v_lo">40</span>
+        <input id="cv_v_lo" type="range" min="0" max="255" value="40"/>
+      </div>
+      <div class="row"><label>V hi</label><span class="val" id="v_cv_v_hi">255</span>
+        <input id="cv_v_hi" type="range" min="0" max="255" value="255"/>
+      </div>
+      <div class="row"><label>Erode</label><span class="val" id="v_cv_erode">0</span>
+        <input id="cv_erode" type="range" min="0" max="4" value="0"/>
+      </div>
+      <div class="row"><label>Dilate</label><span class="val" id="v_cv_dilate">1</span>
+        <input id="cv_dilate" type="range" min="0" max="4" value="1"/>
+      </div>
+      <div class="row"><label>Min area</label><span class="val" id="v_cv_min_area">40</span>
+        <input id="cv_min_area" type="range" min="10" max="2000" value="40"/>
+      </div>
+      <div class="row"><label>Thr</label><span class="val" id="v_cv_thr">110</span>
+        <input id="cv_thr" type="range" min="0" max="255" value="110"/>
+      </div>
+      <div class="row"><label>Edge lo</label><span class="val" id="v_cv_edge_lo">35</span>
+        <input id="cv_edge_lo" type="range" min="0" max="255" value="35"/>
+      </div>
+      <div class="row"><label>Edge hi</label><span class="val" id="v_cv_edge_hi">90</span>
+        <input id="cv_edge_hi" type="range" min="0" max="255" value="90"/>
+      </div>
+      <div class="row"><label>Track</label><span class="val" id="v_cv_track_dist">80</span>
+        <input id="cv_track_dist" type="range" min="20" max="200" value="80"/>
+      </div>
+      </div>
+    </div>
+
+    <div id="tab_face" class="tabpane">
+      <div id="face_panel">
+      <h2>Face ID</h2>
+      <div id="face_status" class="face_status">FD idle</div>
+      <div class="hint" id="face_hint">SD face.db → PSRAM</div>
+      <div class="swrow">
+        <label class="sw"><span>DETECT</span><input id="face_detect" type="checkbox"/></label>
+        <label class="sw"><span>RECOG</span><input id="face_recog" type="checkbox"/></label>
+      </div>
+      <div class="row full"><label>Model</label>
+        <select id="face_model">
+          <option value="0" selected>MSR+MNP · 320×240</option>
+          <option value="1">ESPDet 224</option>
+          <option value="2">ESPDet 416</option>
+        </select>
+      </div>
+      <div class="row"><label>Match %</label><span class="val" id="v_face_thr">50</span>
+        <input id="face_thr" type="range" min="10" max="95" value="50"/>
+      </div>
+      <div class="row full"><label>Subject</label>
+        <input id="face_name" class="field" type="text" maxlength="23" placeholder="NAME" style="text-transform:uppercase;font-family:ui-monospace,Consolas,monospace;letter-spacing:.05em"/>
+      </div>
+      <div class="btns">
+        <button id="btn_face_enroll" type="button">Enroll</button>
+        <button id="btn_face_clear" type="button" class="secondary">Clear DB</button>
+      </div>
+      <div class="row full"><label>Subjects</label>
+        <select id="face_roster"><option value="">(empty)</option></select>
+      </div>
+      <div class="btns single">
+        <button id="btn_face_delete" type="button" class="secondary">Delete subject</button>
+      </div>
+      </div>
+    </div>
+
+    <div id="tab_rec" class="tabpane">
+      <h2>Record</h2>
+      <canvas id="wave" width="640" height="48"></canvas>
+      <div class="row"><label>Mic</label><span class="val" id="v_mic_gain">55</span>
+        <input id="mic_gain" type="range" min="0" max="100" value="55"/>
+      </div>
+      <div class="hint" id="mic_hint">Mic…</div>
+      <div class="timer" id="rec_timer">00:00</div>
+      <div class="btns single">
+        <button id="btn_record" class="record" type="button" disabled>Record</button>
+      </div>
+      <div class="hint" id="vid_hint">Video…</div>
+    </div>
+
+    <div id="tab_sensor" class="tabpane">
+      <h2>OV5647</h2>
+      <div class="hint" id="sensor_hint">Flip updates ISP Bayer order</div>
+      <div class="swrow">
+        <label class="sw"><span>H-MIR</span><input id="hmirror" type="checkbox"/></label>
+        <label class="sw"><span>V-FLIP</span><input id="vflip" type="checkbox"/></label>
+      </div>
+      <div class="swrow">
+        <label class="sw"><span>AEC</span><input id="aec" type="checkbox" checked/></label>
+        <label class="sw"><span>AGC</span><input id="agc" type="checkbox" checked/></label>
+      </div>
+      <div class="row"><label>Exposure</label><span class="val" id="v_aec_value">100</span>
+        <input id="aec_value" type="range" min="4" max="980" value="100"/>
+      </div>
+      <div class="row"><label>Gain</label><span class="val" id="v_agc_gain">16</span>
+        <input id="agc_gain" type="range" min="0" max="1023" value="16"/>
+      </div>
+      <div class="row"><label>Gain ceil</label><span class="val" id="v_gainceiling">248</span>
+        <input id="gainceiling" type="range" min="16" max="1023" value="248"/>
+      </div>
+      <div class="swrow">
+        <label class="sw"><span>PATTERN</span><input id="colorbar" type="checkbox"/></label>
+      </div>
     </div>
   </section>
 </main>
@@ -154,7 +286,7 @@ const basePort=location.port?parseInt(location.port,10):80;
 const streamPort=basePort+1;
 const streamUrl=location.protocol+'//'+location.hostname+':'+streamPort+'/stream';
 document.getElementById('a_stream').href=streamUrl;
-let applying=false, debounceTimers={};
+let applying=false, debounceTimers={}, faceBusy=false, statusToken=0;
 
 function toast(m){const t=document.getElementById('toast');t.textContent=m;t.style.display='block';clearTimeout(t._t);t._t=setTimeout(()=>t.style.display='none',900)}
 
@@ -175,17 +307,18 @@ async function control(varName,val){
 
 function bindRange(id,varName){
   const el=document.getElementById(id), lab=document.getElementById('v_'+id);
+  if(!el) return;
   const sync=()=>{if(lab)lab.textContent=el.value};
   el.addEventListener('input',()=>{
     sync();
     clearTimeout(debounceTimers[id]);
     debounceTimers[id]=setTimeout(async()=>{
       if(varName==='aec_value'){
-        document.getElementById('aec').value='0';
+        const a=document.getElementById('aec'); if(a){ a.checked=false; }
         await control('aec','0');
       }
       if(varName==='agc_gain'){
-        document.getElementById('agc').value='0';
+        const a=document.getElementById('agc'); if(a){ a.checked=false; }
         await control('agc','0');
       }
       await control(varName,el.value);
@@ -194,22 +327,183 @@ function bindRange(id,varName){
   sync();
 }
 function bindSelect(id,varName){
-  document.getElementById(id).addEventListener('change',e=>control(varName,e.target.value));
+  const el=document.getElementById(id); if(!el) return;
+  el.addEventListener('change',e=>control(varName,e.target.value));
 }
+function bindSwitch(id,varName){
+  const el=document.getElementById(id); if(!el) return;
+  el.addEventListener('change',()=>control(varName, el.checked?'1':'0'));
+}
+function faceOn(el){ return !!(el && (el.type==='checkbox'?el.checked:el.value==='1')); }
+function setFaceOn(el,on){ if(!el) return; if(el.type==='checkbox') el.checked=!!on; else el.value=on?'1':'0'; }
+function showTab(id){
+  document.querySelectorAll('.tabpane').forEach(p=>p.classList.toggle('on',p.id===id));
+  document.querySelectorAll('#side_tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===id));
+}
+document.getElementById('side_tabs').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-tab]'); if(!b) return;
+  showTab(b.dataset.tab);
+});
 bindRange('quality','quality');
 bindRange('frameskip','frameskip');
 bindRange('aec_value','aec_value');
 bindRange('agc_gain','agc_gain');
 bindRange('gainceiling','gainceiling');
 bindRange('mic_gain','mic_gain');
-bindSelect('framesize','framesize');
-bindSelect('hmirror','hmirror');
-bindSelect('vflip','vflip');
-bindSelect('aec','aec');
-bindSelect('agc','agc');
-bindSelect('colorbar','colorbar');
+document.getElementById('framesize').addEventListener('change',async e=>{
+  stream.removeAttribute('src');
+  stream.src='';
+  await control('framesize',e.target.value);
+  reconnectStream();
+});
+bindSwitch('hmirror','hmirror');
+bindSwitch('vflip','vflip');
+bindSwitch('aec','aec');
+bindSwitch('agc','agc');
+bindSwitch('colorbar','colorbar');
+bindSelect('cv_mode','cv_mode');
+bindSelect('cv_preset','cv_preset');
+function syncFaceToggles(){
+  const fd=document.getElementById('face_detect');
+  const fr=document.getElementById('face_recog');
+  if(!fd||!fr) return;
+  if(!faceOn(fd)){ setFaceOn(fr,false); fr.disabled=true; }
+  else fr.disabled=false;
+}
+document.getElementById('face_model').addEventListener('change',e=>applyFaceAndRes('face_model',e.target.value));
+document.getElementById('face_detect').addEventListener('change',async e=>{
+  faceBusy=true;
+  try{
+    const on=faceOn(e.target);
+    if(!on){
+      setFaceOn(document.getElementById('face_recog'),false);
+      await applyFaceAndRes('face_detect','0');
+      await control('face_recog','0');
+    }else{
+      await applyFaceAndRes('face_detect','1');
+    }
+    syncFaceToggles();
+  }finally{ faceBusy=false; }
+});
+document.getElementById('face_recog').addEventListener('change',async e=>{
+  faceBusy=true;
+  try{
+    if(faceOn(e.target)){
+      setFaceOn(document.getElementById('face_detect'),true);
+      syncFaceToggles();
+      await control('face_detect','1');
+      await applyFaceAndRes('face_recog','1');
+      setFaceOn(document.getElementById('face_detect'),true);
+      setFaceOn(document.getElementById('face_recog'),true);
+    }else{
+      await applyFaceAndRes('face_recog','0');
+    }
+    syncFaceToggles();
+  }finally{ faceBusy=false; }
+});
+syncFaceToggles();
+bindRange('face_thr','face_thr');
+['cv_h_lo','cv_h_hi','cv_s_lo','cv_s_hi','cv_v_lo','cv_v_hi','cv_erode','cv_dilate','cv_min_area','cv_thr','cv_edge_lo','cv_edge_hi','cv_track_dist'].forEach(id=>bindRange(id,id));
+document.getElementById('btn_face_enroll').onclick=async()=>{
+  const name=(document.getElementById('face_name').value||'').trim();
+  if(!name){ toast('enter a name first'); return; }
+  faceBusy=true;
+  try{
+    const modelEl=document.getElementById('face_model');
+    if(modelEl && modelEl.value!=='0'){
+      modelEl.value='0';
+      await applyFaceAndRes('face_model','0');
+    }
+    setFaceOn(document.getElementById('face_detect'),true);
+    // Keep RECOG as-is — firmware skips FR only during the enroll window.
+    syncFaceToggles();
+    await control('face_detect','1');
+    await control('face_enroll_name', name);
+    await control('face_enroll', 1);
+    showTab('tab_face');
+    toast('ENROLL '+name.toUpperCase()+' — hold steady (5 confirms → 1 ID)');
+  }finally{ faceBusy=false; }
+};
+document.getElementById('btn_face_clear').onclick=()=>{ if(confirm('Clear entire face database?')) control('face_clear',1); };
+document.getElementById('btn_face_delete').onclick=()=>{
+  const sel=document.getElementById('face_roster');
+  const name=sel && sel.value;
+  if(!name){ toast('select a subject'); return; }
+  if(confirm('Delete subject "'+name+'" (all samples)?')) control('face_delete_name', name);
+};
+function fillFaceRoster(roster){
+  const sel=document.getElementById('face_roster'); if(!sel) return;
+  const prev=sel.value;
+  sel.innerHTML='';
+  const parts=(roster||'').split('|').filter(Boolean);
+  if(!parts.length){ const o=document.createElement('option'); o.value=''; o.textContent='(empty)'; sel.appendChild(o); return; }
+  parts.forEach(p=>{
+    // name#id#count  (legacy id:name still accepted)
+    let name='', id='', count='1';
+    if(p.indexOf('#')>=0){
+      const bits=p.split('#');
+      name=bits[0]||''; id=bits[1]||''; count=bits[2]||'1';
+    }else{
+      const i=p.indexOf(':');
+      id=i>=0?p.slice(0,i):p;
+      name=i>=0?p.slice(i+1):('ID'+id);
+    }
+    const o=document.createElement('option');
+    o.value=name;
+    const c=parseInt(count,10)||1;
+    o.textContent=name.toUpperCase()+'  ·  ID '+id+(c>1?('  ·  '+c+' feats'):'');
+    sel.appendChild(o);
+  });
+  if(prev) sel.value=prev;
+}
+function faceStatusText(s){
+  const db=(s.face_db||'/sdcard/face/face.db').replace(/^\/sdcard\//,'SD:/');
+  let st=db+' → PSRAM  ·  DET '+(s.face_n||0)+'  ·  '+(s.face_ms||0)+'ms  ·  DB '+(s.face_feats||0);
+  if(s.face_enroll_ok===2) st+='  ·  ENROLL '+(s.face_enroll_got||0)+'/'+(s.face_enroll_need||5);
+  else if(s.face_detect===0) st+='  ·  DET OFF';
+  else if(s.face_recog===0) st+='  ·  REC OFF';
+  else st+='  ·  REC ON';
+  if(s.face_enroll_ok===1) st+='  ·  STORED #'+(s.face_enroll_id||'?');
+  else if(s.face_enroll_ok===-1) st+='  ·  ENROLL FAIL (SD write)';
+  else if(s.face_enroll_ok===-2) st+='  ·  NO MFN';
+  else if(s.face_enroll_ok===-3) st+='  ·  NEED MSR+MNP';
+  return st;
+}
+function setFaceStatus(s){
+  const el=document.getElementById('face_status');
+  if(el) el.textContent=faceStatusText(s);
+}
 
 function reconnectStream(){stream.src=streamUrl+'?ts='+Date.now()}
+function syncFaceResLock(s){
+  const fs=document.getElementById('framesize');
+  const locked=!!(s && (s.face_lock || ((s.face_detect||0)|(s.face_recog||0))));
+  if(fs) fs.disabled=locked;
+  const fsh=document.getElementById('fs_hint');
+  if(fsh && s){
+    if(locked) fsh.textContent='FACE LOCK '+s.out_w+'×'+s.out_h+' · sensor '+s.native_w+'×'+s.native_h+' (model input forced)';
+    else fsh.textContent='Stream '+s.out_w+'×'+s.out_h+' · sensor '+s.native_w+'×'+s.native_h+' · uniform scale + letterbox';
+  }
+  return locked;
+}
+async function applyFaceAndRes(varName,val){
+  const before=stream.dataset.faceLock||'0';
+  await control(varName,val);
+  try{
+    const s=await (await fetch('/status?_='+Date.now(),{cache:'no-store'})).json();
+    const locked=syncFaceResLock(s);
+    stream.dataset.faceLock=locked?'1':'0';
+    if(String(s.out_w)+'x'+String(s.out_h)!==(stream.dataset.outRes||'') || before!==stream.dataset.faceLock){
+      stream.dataset.outRes=String(s.out_w)+'x'+String(s.out_h);
+      stream.removeAttribute('src'); stream.src='';
+      reconnectStream();
+    }
+    if(s.framesize!=null){
+      const fs=document.getElementById('framesize');
+      if(fs && document.activeElement!==fs) fs.value=String(s.framesize);
+    }
+  }catch(e){}
+}
 document.getElementById('btn_reconnect').onclick=reconnectStream;
 stream.onerror=()=>{setTimeout(reconnectStream,500)};
 // Auto-reconnect if MJPEG stops advancing (common after a stalled TCP send).
@@ -345,11 +639,44 @@ document.getElementById('btn_record').onclick=async()=>{
 };
 
 function fillForm(s){
-  const set=(id,v)=>{const el=document.getElementById(id); if(!el||v===undefined||v===null)return; el.value=String(v); if(el.type==='range') el.dispatchEvent(new Event('input'))};
+  // Do not dispatch range 'input' here — that re-fires /control and can fight face toggles.
+  const set=(id,v)=>{
+    const el=document.getElementById(id); if(!el||v===undefined||v===null)return;
+    if(el.type==='checkbox'){ el.checked=!!(+v); return; }
+    el.value=String(v);
+    const lab=document.getElementById('v_'+id); if(lab&&el.type==='range') lab.textContent=el.value;
+  };
   set('framesize',s.framesize); set('quality',s.quality); set('frameskip',s.frameskip);
   set('hmirror',s.hmirror); set('vflip',s.vflip); set('aec',s.aec); set('agc',s.agc);
   set('aec_value',s.aec_value); set('agc_gain',s.agc_gain); set('gainceiling',s.gainceiling);
   set('colorbar',s.colorbar); set('mic_gain',s.mic_gain);
+  if(s.cv_ok){
+    const pan=document.getElementById('cv_panel'); if(pan) pan.style.display='block';
+    set('cv_mode',s.cv_mode); set('cv_preset',s.cv_preset);
+    set('cv_h_lo',s.cv_h_lo); set('cv_h_hi',s.cv_h_hi);
+    set('cv_s_lo',s.cv_s_lo); set('cv_s_hi',s.cv_s_hi);
+    set('cv_v_lo',s.cv_v_lo); set('cv_v_hi',s.cv_v_hi);
+    set('cv_erode',s.cv_erode); set('cv_dilate',s.cv_dilate);
+    set('cv_min_area',s.cv_min_area); set('cv_thr',s.cv_thr);
+    set('cv_edge_lo',s.cv_edge_lo); set('cv_edge_hi',s.cv_edge_hi);
+    set('cv_track_dist',s.cv_track_dist);
+    const ch=document.getElementById('cv_hint');
+    if(ch) ch.textContent='CV · tracks='+(s.cv_tracks||0)+' · det='+(s.cv_blobs||0)+' · mask_px='+(s.cv_mask_px||0)+' · '+
+      (s.cv_ms||0)+'ms · T='+(s.cv_thr||0);
+  }
+  if(s.face_ok){
+    if(!faceBusy){
+      set('face_model',s.face_model);
+      set('face_detect',s.face_detect!=null?s.face_detect:0);
+      set('face_recog',s.face_recog!=null?s.face_recog:0);
+    }
+    set('face_thr',s.face_thr);
+    fillFaceRoster(s.face_roster||'');
+    syncFaceToggles();
+    setFaceStatus(s);
+  }
+  syncFaceResLock(s);
+  stream.dataset.outRes=String(s.out_w)+'x'+String(s.out_h);
   const mg=document.getElementById('mic_gain'); if(mg) mg.disabled=!s.mic_ok;
   const sh=document.getElementById('sensor_hint');
   if(sh){
@@ -361,10 +688,10 @@ function fillForm(s){
   const hint=document.getElementById('sd_hint');
   const btn=document.getElementById('btn_capture_img');
   if(s.sd_ok){
-    hint.textContent='SD ready → '+ (s.sd_folder||'/IMG') +'  (saved '+ (s.saved||0) +')';
+    hint.textContent='Storage ready → '+ (s.sd_folder||'/IMG') +'  (saved '+ (s.saved||0) +')';
     btn.disabled=false;
   }else{
-    hint.textContent='SD capture disabled (mount card + enableSdCapture)';
+    hint.textContent='Capture disabled (mount storage + enableCapture)';
     btn.disabled=true;
   }
   const vh=document.getElementById('vid_hint');
@@ -385,21 +712,29 @@ function metaText(s){
   if(s.sd_ok) t+=' · SD '+ (s.saved||0);
   if(s.recording) t+=' · REC '+fmtMs(s.rec_ms||0)+' '+ (s.rec_frames||0)+'f';
   else if(s.video_ok) t+=' · VID '+ (s.videos||0);
+  if(s.cv_ok) t+=' · CV m'+s.cv_mode+' b'+(s.cv_blobs||0)+' p'+(s.cv_mask_px||0);
   return t;
 }
 async function refreshMetaOnly(){
-  if(recBusy) return;
+  if(recBusy || faceBusy) return;
+  const tok=++statusToken;
   try{
     const s=await (await fetch('/status?_='+Date.now(),{cache:'no-store'})).json();
+    if(tok!==statusToken || faceBusy) return;
     document.getElementById('meta').textContent=metaText(s);
+    const fsh=document.getElementById('fs_hint');
+    if(fsh) fsh.textContent='Stream '+s.out_w+'×'+s.out_h+' · sensor '+s.native_w+'×'+s.native_h+' · uniform scale + letterbox';
+    const fs=document.getElementById('framesize');
+    if(fs && document.activeElement!==fs && s.framesize!=null) fs.value=String(s.framesize);
+    syncFaceResLock(s);
     const hint=document.getElementById('sd_hint');
     const btn=document.getElementById('btn_capture_img');
     if(s.sd_ok){
-      hint.textContent='SD ready → '+ (s.sd_folder||'/IMG') +'  (saved '+ (s.saved||0) +')' +
+      hint.textContent='Storage ready → '+ (s.sd_folder||'/IMG') +'  (saved '+ (s.saved||0) +')' +
         (s.last_saved?(' · '+s.last_saved):'');
       btn.disabled=false;
     }else{
-      hint.textContent='SD capture disabled (mount card + enableSdCapture)';
+      hint.textContent='Capture disabled (mount storage + enableCapture)';
       btn.disabled=true;
     }
     const vh=document.getElementById('vid_hint');
@@ -414,6 +749,23 @@ async function refreshMetaOnly(){
       rb.disabled=true;
     }
     if(!recBusy) setRecUi(!!s.recording, s.rec_ms||0);
+    if(s.cv_ok){
+      const ch=document.getElementById('cv_hint');
+      if(ch) ch.textContent='CV live · blobs='+(s.cv_blobs||0)+' · mask_px='+(s.cv_mask_px||0)+' · '+
+        (s.cv_ms||0)+'ms — Mask=green match. Blobs=boxes. Tune S/V lo if empty.';
+    }
+    if(s.face_ok){
+      setFaceStatus(s);
+      fillFaceRoster(s.face_roster||'');
+      if(!faceBusy){
+        const fd=document.getElementById('face_detect'), fr=document.getElementById('face_recog');
+        const fm=document.getElementById('face_model');
+        if(fd && document.activeElement!==fd) setFaceOn(fd, !!(s.face_detect));
+        if(fr && document.activeElement!==fr) setFaceOn(fr, !!(s.face_recog));
+        if(fm && document.activeElement!==fm && s.face_model!=null) fm.value=String(s.face_model);
+        syncFaceToggles();
+      }
+    }
   }catch(e){}
 }
 async function boot(){
@@ -424,6 +776,8 @@ async function boot(){
     if(a1){ a1.href=u; a1.style.display=''; }
     if(a2){ a2.href=u; a2.style.display=''; }
   }
+  if(window.CAM_CV){ const pan=document.getElementById('cv_panel'); if(pan) pan.style.display='block'; }
+  if(window.CAM_FACE){ showTab('tab_face'); }
   try{
     const s=await (await fetch('/status?_='+Date.now(),{cache:'no-store'})).json();
     fillForm(s);
@@ -439,47 +793,106 @@ setInterval(()=>{ if(!applying) refreshMetaOnly(); },500);
 </html>
 )HTML";
 
-static void framesizeToWH(uint8_t fs, uint16_t *w, uint16_t *h) {
-  switch (fs) {
-    case ESP32P4_STREAM_VGA:
-      *w = 640;
-      *h = 480;
+static const struct {
+  uint16_t w, h;
+} kStreamSizes[ESP32P4_STREAM_COUNT] = {
+    {1920, 1088},  // FHD (height ↑ to ÷16; letterbox from 1080)
+    {1280, 720},   // HD 16:9 (exact 2/3 of 1920x1080)
+    {1024, 576},   // XGA 16:9
+    {800, 448},    // SVGA-ish 16:9 (was 800x640 — mismatched 1080p → bottom trash)
+    {640, 368},    // VGA-ish 16:9 (640x360→368)
+    {480, 272},    // HVGA 16:9
+    {400, 224},    // CIF-ish 16:9
+    {320, 176},    // QVGA 16:9
+    {240, 128},    // HQVGA 16:9
+    {160, 96},     // QQVGA 16:9
+};
+
+static void framesizeToWH(uint8_t fs, uint16_t nw, uint16_t nh, uint16_t *w, uint16_t *h) {
+  if (nw < 16) nw = 16;
+  if (nh < 16) nh = 16;
+  if (fs >= ESP32P4_STREAM_COUNT) fs = ESP32P4_STREAM_HD;
+
+  // Pick requested size, or the largest table entry that fits the sensor.
+  uint16_t tw = kStreamSizes[fs].w;
+  uint16_t th = kStreamSizes[fs].h;
+  if (tw <= nw && th <= nh) {
+    *w = tw;
+    *h = th;
+    return;
+  }
+  for (int i = (int)fs; i >= 0; --i) {
+    if (kStreamSizes[i].w <= nw && kStreamSizes[i].h <= nh) {
+      *w = kStreamSizes[i].w;
+      *h = kStreamSizes[i].h;
+      return;
+    }
+  }
+  for (int i = 0; i < (int)ESP32P4_STREAM_COUNT; ++i) {
+    if (kStreamSizes[i].w <= nw && kStreamSizes[i].h <= nh) {
+      *w = kStreamSizes[i].w;
+      *h = kStreamSizes[i].h;
+      return;
+    }
+  }
+  // Last resort: floor sensor to ÷16
+  *w = (uint16_t)((nw / 16) * 16);
+  *h = (uint16_t)((nh / 16) * 16);
+  if (*w < 16) *w = 16;
+  if (*h < 16) *h = 16;
+}
+
+void ESP32P4_MjpegServer::faceModelToWH(int model, uint16_t *w, uint16_t *h) {
+  // Face working frame (stream lock), not raw net tensor size.
+  // MSR+MNP: classic QVGA 320×240 (Arduino-ESP32 2.0.x CameraWebServer / esp-face).
+  // ESPDet: native square input. MFN still aligns internally to 112×112.
+  switch (model) {
+    case 1:
+      *w = 224;
+      *h = 224;
       break;
-    case ESP32P4_STREAM_HVGA:
-      *w = 480;
-      *h = 320;
+    case 2:
+      *w = 416;
+      *h = 416;
       break;
-    case ESP32P4_STREAM_QVGA:
+    default:
       *w = 320;
       *h = 240;
-      break;
-    case ESP32P4_STREAM_QQVGA:
-      *w = 160;
-      *h = 120;
-      break;
-    case ESP32P4_STREAM_SVGA:
-    default:
-      *w = 800;
-      *h = 640;
       break;
   }
 }
 
+void ESP32P4_MjpegServer::applyFaceForcedDims() {
+  uint16_t tw = 320, th = 240;
+  faceModelToWH(_face.model, &tw, &th);
+  if (_out_w != tw || _out_h != th) _size_dirty = true;
+  _out_w = tw;
+  _out_h = th;
+}
+
 void ESP32P4_MjpegServer::applyFramesizeDims() {
-  uint16_t w = 800, h = 640;
-  framesizeToWH(_framesize, &w, &h);
-  if (_cam) {
-    if (w > _cam->width()) w = _cam->width();
-    if (h > _cam->height()) h = _cam->height();
+  if (faceResLocked()) {
+    applyFaceForcedDims();
+    return;
   }
+  uint16_t nw = 800, nh = 640;
+  if (_cam) {
+    nw = _cam->width();
+    nh = _cam->height();
+  }
+  uint16_t w = nw, h = nh;
+  framesizeToWH(_framesize, nw, nh, &w, &h);
+  if (_out_w != w || _out_h != h) _size_dirty = true;
   _out_w = w;
   _out_h = h;
 }
 
 bool ESP32P4_MjpegServer::setFramesize(uint8_t fs) {
-  if (fs > ESP32P4_STREAM_QQVGA) return false;
+  if (fs >= ESP32P4_STREAM_COUNT) return false;
   _framesize = fs;
   applyFramesizeDims();
+  // Worker clears scale/JPEG buffers on next frame so old larger frames cannot leak.
+  _size_dirty = true;
   return true;
 }
 
@@ -493,10 +906,15 @@ bool ESP32P4_MjpegServer::begin(ESP32P4_Camera *cam, uint16_t port, uint8_t qual
   if (!_jpeg.begin(cam->width(), cam->height(), _quality)) return false;
   _ppa.begin();
 
-  _framesize = ESP32P4_STREAM_SVGA;
+  _framesize = ESP32P4_STREAM_HD;
   applyFramesizeDims();
+  // If HD does not fit (e.g. 800x640 sensor), applyFramesizeDims already clamped.
 
-  _jpg_cap = 220 * 1024;
+  // JPEG buffer scales with stream size (1080p native needs more headroom).
+  size_t need_jpg = (size_t)_out_w * (size_t)_out_h / 2;
+  if (need_jpg < 220 * 1024) need_jpg = 220 * 1024;
+  if (need_jpg > 900 * 1024) need_jpg = 900 * 1024;
+  _jpg_cap = need_jpg;
   for (int i = 0; i < 2; i++) {
     _jpg_buf[i] = (uint8_t *)esp32p4_psram_alloc(_jpg_cap);
     if (!_jpg_buf[i]) {
@@ -561,6 +979,10 @@ void ESP32P4_MjpegServer::end() {
   disableVideoRecord();
   disableMic();
   disableSdCapture();
+  if (_cv_on) {
+    _cv_on = false;
+    ESP32P4_CvDash::release();
+  }
   if (_http) {
     _http->stop();
     delete _http;
@@ -605,17 +1027,25 @@ void ESP32P4_MjpegServer::setFrameSkip(uint8_t skip) {
 }
 
 bool ESP32P4_MjpegServer::enableSdCapture(ESP32P4_Sd *sd, const char *folder) {
-  if (!sd || !sd->mounted()) {
-    Serial.println("MJPEG: enableSdCapture needs mounted ESP32P4_Sd");
+  return enableCapture((sd && sd->mounted()) ? &sd->fs() : nullptr, folder);
+}
+
+bool ESP32P4_MjpegServer::enableSdCapture(fs::FS *fs, const char *folder) {
+  return enableCapture(fs, folder);
+}
+
+bool ESP32P4_MjpegServer::enableCapture(fs::FS *fs, const char *folder) {
+  if (!fs) {
+    Serial.println("MJPEG: enableCapture needs a mounted fs::FS (SD / FFat / LittleFS / …)");
     return false;
   }
   if (!_jpg_cap) {
-    Serial.println("MJPEG: call begin() before enableSdCapture");
+    Serial.println("MJPEG: call begin() before enableCapture");
     return false;
   }
 
   disableSdCapture();
-  _sd = sd;
+  _store = fs;
   if (!folder || !folder[0]) folder = "/IMG";
   strncpy(_sd_folder, folder, sizeof(_sd_folder) - 1);
   _sd_folder[sizeof(_sd_folder) - 1] = '\0';
@@ -623,10 +1053,10 @@ bool ESP32P4_MjpegServer::enableSdCapture(ESP32P4_Sd *sd, const char *folder) {
   _saved = 0;
   _save_index = 0;
 
-  if (!_sd->exists(_sd_folder)) {
-    if (!_sd->mkdir(_sd_folder)) {
+  if (!_store->exists(_sd_folder)) {
+    if (!_store->mkdir(_sd_folder)) {
       Serial.printf("MJPEG: mkdir %s failed\n", _sd_folder);
-      _sd = nullptr;
+      _store = nullptr;
       return false;
     }
   }
@@ -635,7 +1065,7 @@ bool ESP32P4_MjpegServer::enableSdCapture(ESP32P4_Sd *sd, const char *folder) {
   _save_buf = (uint8_t *)esp32p4_psram_alloc(_save_cap);
   if (!_save_buf) {
     Serial.println("MJPEG: save buffer alloc failed");
-    _sd = nullptr;
+    _store = nullptr;
     return false;
   }
 
@@ -643,19 +1073,19 @@ bool ESP32P4_MjpegServer::enableSdCapture(ESP32P4_Sd *sd, const char *folder) {
   for (uint32_t i = 1; i < 100000; i++) {
     char path[64];
     snprintf(path, sizeof(path), "%s/IMG_%05lu.jpg", _sd_folder, (unsigned long)i);
-    if (!_sd->exists(path)) {
+    if (!_store->exists(path)) {
       _save_index = i - 1;
       break;
     }
   }
 
-  Serial.printf("MJPEG: SD capture -> %s  next=IMG_%05lu.jpg\n", _sd_folder,
+  Serial.printf("MJPEG: capture -> %s  next=IMG_%05lu.jpg\n", _sd_folder,
                 (unsigned long)(_save_index + 1));
   return true;
 }
 
 void ESP32P4_MjpegServer::disableSdCapture() {
-  _sd = nullptr;
+  _store = nullptr;
   esp32p4_psram_free(_save_buf);
   _save_buf = nullptr;
   _save_cap = 0;
@@ -663,8 +1093,12 @@ void ESP32P4_MjpegServer::disableSdCapture() {
 }
 
 bool ESP32P4_MjpegServer::enableVideoRecord(ESP32P4_Sd *sd, ESP32P4_H264 *h264, const char *folder) {
-  if (!sd || !sd->mounted() || !h264 || !h264->ready()) {
-    Serial.println("MJPEG: enableVideoRecord needs mounted SD + ready H264");
+  return enableVideoRecord((sd && sd->mounted()) ? &sd->fs() : nullptr, h264, folder);
+}
+
+bool ESP32P4_MjpegServer::enableVideoRecord(fs::FS *fs, ESP32P4_H264 *h264, const char *folder) {
+  if (!fs || !h264 || !h264->ready()) {
+    Serial.println("MJPEG: enableVideoRecord needs mounted FS + ready H264");
     return false;
   }
   if (!_cam) {
@@ -673,7 +1107,7 @@ bool ESP32P4_MjpegServer::enableVideoRecord(ESP32P4_Sd *sd, ESP32P4_H264 *h264, 
   }
 
   disableVideoRecord();
-  _rec_sd = sd;
+  _rec_fs = fs;
   _h264 = h264;
   if (!folder || !folder[0]) folder = "/VIDEO";
   strncpy(_video_folder, folder, sizeof(_video_folder) - 1);
@@ -683,10 +1117,10 @@ bool ESP32P4_MjpegServer::enableVideoRecord(ESP32P4_Sd *sd, ESP32P4_H264 *h264, 
   _video_index = 0;
   _recording = false;
 
-  if (!_rec_sd->exists(_video_folder)) {
-    if (!_rec_sd->mkdir(_video_folder)) {
+  if (!_rec_fs->exists(_video_folder)) {
+    if (!_rec_fs->mkdir(_video_folder)) {
       Serial.printf("MJPEG: mkdir %s failed\n", _video_folder);
-      _rec_sd = nullptr;
+      _rec_fs = nullptr;
       _h264 = nullptr;
       return false;
     }
@@ -696,7 +1130,7 @@ bool ESP32P4_MjpegServer::enableVideoRecord(ESP32P4_Sd *sd, ESP32P4_H264 *h264, 
   _rec_scale_buf = (uint8_t *)esp32p4_psram_alloc(_rec_scale_cap);
   if (!_rec_scale_buf) {
     Serial.println("MJPEG: rec scale buffer alloc failed");
-    _rec_sd = nullptr;
+    _rec_fs = nullptr;
     _h264 = nullptr;
     return false;
   }
@@ -704,7 +1138,7 @@ bool ESP32P4_MjpegServer::enableVideoRecord(ESP32P4_Sd *sd, ESP32P4_H264 *h264, 
   for (uint32_t i = 1; i < 100000; i++) {
     char path[64];
     snprintf(path, sizeof(path), "%s/VID_%05lu.mp4", _video_folder, (unsigned long)i);
-    if (!_rec_sd->exists(path)) {
+    if (!_rec_fs->exists(path)) {
       _video_index = i - 1;
       break;
     }
@@ -722,7 +1156,7 @@ void ESP32P4_MjpegServer::disableVideoRecord() {
   uint32_t t0 = millis();
   while (_rec_finalizing && (millis() - t0) < 60000) vTaskDelay(pdMS_TO_TICKS(20));
   _h264 = nullptr;
-  _rec_sd = nullptr;
+  _rec_fs = nullptr;
   esp32p4_psram_free(_rec_scale_buf);
   _rec_scale_buf = nullptr;
   _rec_scale_cap = 0;
@@ -786,10 +1220,10 @@ void ESP32P4_MjpegServer::micLoop() {
 }
 
 bool ESP32P4_MjpegServer::nextVideoPath(char *out, size_t out_cap) {
-  if (!_rec_sd || !out || !out_cap) return false;
+  if (!_rec_fs || !out || !out_cap) return false;
   for (uint32_t i = _video_index + 1; i < 100000; i++) {
     snprintf(out, out_cap, "%s/VID_%05lu.mp4", _video_folder, (unsigned long)i);
-    if (!_rec_sd->exists(out)) {
+    if (!_rec_fs->exists(out)) {
       _video_index = i;
       return true;
     }
@@ -829,14 +1263,14 @@ bool ESP32P4_MjpegServer::startVideoRecord() {
       } else {
         strncpy(pcm, "/VIDEO/rec.pcm", sizeof(pcm) - 1);
       }
-      if (_mic->startPcmFile(_rec_sd, pcm)) {
+      if (_mic->startPcmFile(_rec_fs, pcm)) {
         pcm_arg = pcm;
         pcm_rate = (uint32_t)_mic->sampleRate();
       } else {
         Serial.println("MJPEG: PCM open failed — recording video-only");
       }
     }
-    if (_h264->openMp4(_rec_sd, path, pcm_arg, pcm_rate)) {
+    if (_h264->openMp4(_rec_fs, path, pcm_arg, pcm_rate)) {
       strncpy(_last_video, path, sizeof(_last_video) - 1);
       _last_video[sizeof(_last_video) - 1] = '\0';
       _recording = true;
@@ -896,7 +1330,7 @@ void ESP32P4_MjpegServer::finalizeVideoRecord() {
 }
 
 bool ESP32P4_MjpegServer::saveReadyJpegToSd(char *path_out, size_t path_cap, size_t *bytes_out) {
-  if (!_sd || !_sd->mounted() || !_save_buf) return false;
+  if (!_store || !_save_buf) return false;
 
   size_t n = 0;
   if (_jpg_mutex) xSemaphoreTake(_jpg_mutex, portMAX_DELAY);
@@ -914,10 +1348,14 @@ bool ESP32P4_MjpegServer::saveReadyJpegToSd(char *path_out, size_t path_cap, siz
   _save_index++;
   char path[64];
   snprintf(path, sizeof(path), "%s/IMG_%05lu.jpg", _sd_folder, (unsigned long)_save_index);
-  if (!_sd->writeBytes(path, _save_buf, n)) {
+  File f = _store->open(path, FILE_WRITE);
+  if (!f || f.write(_save_buf, n) != n) {
+    if (f) f.close();
     _save_index--;
     return false;
   }
+  f.flush();
+  f.close();
 
   strncpy(_last_saved, path, sizeof(_last_saved) - 1);
   _last_saved[sizeof(_last_saved) - 1] = '\0';
@@ -934,11 +1372,11 @@ bool ESP32P4_MjpegServer::saveReadyJpegToSd(char *path_out, size_t path_cap, siz
 bool ESP32P4_MjpegServer::startHttpTasks() {
   _http_run = true;
   // Higher priority than stream so /control stays snappy.
-  if (xTaskCreatePinnedToCore(controlHttpThunk, "p4cam_http", 6144, this, 6, &_control_task, 0) !=
+  if (xTaskCreatePinnedToCore(controlHttpThunk, "p4cam_http", 12288, this, 6, &_control_task, 0) !=
       pdPASS) {
     return false;
   }
-  if (xTaskCreatePinnedToCore(streamHttpThunk, "p4cam_strm", 6144, this, 4, &_stream_task, 0) !=
+  if (xTaskCreatePinnedToCore(streamHttpThunk, "p4cam_strm", 8192, this, 4, &_stream_task, 0) !=
       pdPASS) {
     return false;
   }
@@ -991,7 +1429,7 @@ void ESP32P4_MjpegServer::streamHttpLoop() {
 bool ESP32P4_MjpegServer::startWorker() {
   if (_worker) return true;
   _worker_run = true;
-  BaseType_t ok = xTaskCreatePinnedToCore(workerThunk, "p4cam_jpg", 12288, this, 5, &_worker, 1);
+  BaseType_t ok = xTaskCreatePinnedToCore(workerThunk, "p4cam_jpg", 16384, this, 5, &_worker, 1);
   return ok == pdPASS;
 }
 
@@ -1060,8 +1498,34 @@ void ESP32P4_MjpegServer::workerLoop() {
     uint16_t ew = fb->width;
     uint16_t eh = fb->height;
 
+    if (_size_dirty) {
+      _jpeg.clearInput();
+      if (_scale_buf && _scale_cap) memset(_scale_buf, 0, _scale_cap);
+      if (_jpg_mutex) xSemaphoreTake(_jpg_mutex, portMAX_DELAY);
+      _jpg_len[0] = 0;
+      _jpg_len[1] = 0;
+      _ready_idx = -1;
+      if (_jpg_mutex) xSemaphoreGive(_jpg_mutex);
+      _size_dirty = false;
+    }
+
     if (ow != fb->width || oh != fb->height) {
-      if (!_ppa.scale(fb, _scale_buf, _scale_cap, ow, oh)) {
+      bool scaled = false;
+      // Face lock / any FD-FR session: cover-crop so overlays never land in letterbox bands.
+      if (faceResLocked() || (_face.on && (_face.detect_en || _face.recog_en))) {
+        memset(_scale_buf, 0, (size_t)ow * (size_t)oh * 2);
+        scaled = _ppa.scaleCover(fb, _scale_buf, _scale_cap, ow, oh);
+      } else {
+        scaled = _ppa.scaleFit(fb, _scale_buf, _scale_cap, ow, oh);
+      }
+      if (!scaled && ow == (uint16_t)(fb->width / 2) && oh == (uint16_t)(fb->height / 2) &&
+                 (size_t)ow * oh * 2 <= _scale_cap) {
+        memset(_scale_buf, 0, (size_t)ow * oh * 2);
+        ESP32P4_Img::downsample2x565((const uint16_t *)fb->buf, fb->width, fb->height,
+                                     (uint16_t *)_scale_buf);
+        scaled = true;
+      }
+      if (!scaled) {
         _cam->release(fb);
         _dropped++;
         continue;
@@ -1069,6 +1533,18 @@ void ESP32P4_MjpegServer::workerLoop() {
       rgb = _scale_buf;
       ew = ow;
       eh = oh;
+    }
+
+    // Optional CV / annotate hook — always on a mutable copy (scale_buf).
+    if (_frame_hook && _scale_buf) {
+      size_t need = (size_t)ew * (size_t)eh * 2;
+      if (need <= _scale_cap) {
+        if (rgb != _scale_buf) {
+          memcpy(_scale_buf, rgb, need);
+          rgb = _scale_buf;
+        }
+        _frame_hook((uint16_t *)_scale_buf, (int)ew, (int)eh, _frame_hook_user);
+      }
     }
 
     const int i = _enc_idx;
@@ -1108,25 +1584,60 @@ void ESP32P4_MjpegServer::workerLoop() {
 
 void ESP32P4_MjpegServer::setFilesBrowserPort(uint16_t port) { _files_port = port; }
 
+void ESP32P4_MjpegServer::setFrameHook(FrameHook hook, void *user) {
+  _frame_hook = hook;
+  _frame_hook_user = user;
+  if (hook != cvDashHook) _cv_on = false;
+}
+
+void ESP32P4_MjpegServer::cvDashHook(uint16_t *rgb, int w, int h, void *user) {
+  auto *self = static_cast<ESP32P4_MjpegServer *>(user);
+  if (!self || !self->_cv_on) return;
+  ESP32P4_CvDash::process(rgb, w, h, self->_cv);
+}
+
+bool ESP32P4_MjpegServer::enableCvDashboard(bool on) {
+  _cv_on = on;
+  if (on) {
+    _face.on = false;
+    _cv.mode = ESP32P4_CV_EDGE_TRACK;
+    _cv.preset = ESP32P4_CV_PRESET_COINS;
+    ESP32P4_CvDash::applyPreset(_cv, _cv.preset);
+    setFrameHook(cvDashHook, this);
+  } else if (_frame_hook == cvDashHook) {
+    clearFrameHook();
+    ESP32P4_CvDash::release();
+  }
+  return true;
+}
+
+bool ESP32P4_MjpegServer::enableFaceUi(bool on) {
+  _face.on = on;
+  if (on) _cv_on = false;
+  return true;
+}
+
 void ESP32P4_MjpegServer::handleRoot() {
   _http->setContentLength(CONTENT_LENGTH_UNKNOWN);
   _http->send(200, "text/html; charset=utf-8", "");
-  char boot[96];
+  char boot[128];
   snprintf(boot, sizeof(boot),
-           "<script>window.CAM_FILES_PORT=%u;</script>", (unsigned)_files_port);
+           "<script>window.CAM_FILES_PORT=%u;window.CAM_CV=%s;window.CAM_FACE=%s;</script>",
+           (unsigned)_files_port, _cv_on ? "true" : "false", _face.on ? "true" : "false");
   _http->sendContent(boot);
   _http->sendContent_P(INDEX_HTML);
 }
 
 void ESP32P4_MjpegServer::sendJpeg(WebServer *srv) {
   if (!srv) return;
-  int idx = _ready_idx;
+  int idx = -1;
   size_t n = 0;
   if (_jpg_mutex) xSemaphoreTake(_jpg_mutex, pdMS_TO_TICKS(50));
   idx = _ready_idx;
-  if (idx >= 0) n = _jpg_len[idx];
-  // Copy length under lock; buffer itself is stable until next overwrite of same slot.
-  // Use the buffer that is NOT currently being encoded (_enc_idx is write target).
+  if (idx >= 0 && idx <= 1) {
+    n = _jpg_len[idx];
+    if (n) _jpg_busy[idx] = 1;
+  }
   if (_jpg_mutex) xSemaphoreGive(_jpg_mutex);
 
   if (idx < 0 || !n) {
@@ -1140,6 +1651,7 @@ void ESP32P4_MjpegServer::sendJpeg(WebServer *srv) {
       "Connection: close\r\n\r\n",
       (unsigned)n);
   client.write(_jpg_buf[idx], n);
+  _jpg_busy[idx] = 0;
 }
 
 void ESP32P4_MjpegServer::handleJpg() { sendJpeg(_http); }
@@ -1283,12 +1795,15 @@ void ESP32P4_MjpegServer::handleStream() {
       }
     }
     last_seq = _frame_seq;
-    int idx = _ready_idx;
-    if (idx < 0 || idx > 1) continue;
-    size_t n = _jpg_len[idx];
-    if (!n) continue;
+    int idx = -1;
+    size_t n = 0;
+    if (_jpg_mutex) xSemaphoreTake(_jpg_mutex, pdMS_TO_TICKS(50));
+    idx = _ready_idx;
+    if (idx >= 0 && idx <= 1) n = _jpg_len[idx];
+    if (n) _jpg_busy[idx] = 1;
+    if (_jpg_mutex) xSemaphoreGive(_jpg_mutex);
+    if (idx < 0 || !n) continue;
 
-    _jpg_busy[idx] = 1;
     held = idx;
 
     if (!client.printf("--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",
@@ -1334,7 +1849,8 @@ void ESP32P4_MjpegServer::handleStatus() {
   _cam->getGain(&gain);
   _cam->getGainCeiling(&ceil);
 
-  char buf[1200];
+  // Keep off the HTTP task stack — a 4KB local here caused Stack protection fault on p4cam_http.
+  static char buf[3072];
   snprintf(buf, sizeof(buf),
            "{\"sensor\":\"%s\",\"framesize\":%u,\"out_w\":%u,\"out_h\":%u,"
            "\"w\":%u,\"h\":%u,\"native_w\":%u,\"native_h\":%u,"
@@ -1346,7 +1862,16 @@ void ESP32P4_MjpegServer::handleStatus() {
            "\"sd_ok\":%u,\"sd_folder\":\"%s\",\"saved\":%u,\"last_saved\":\"%s\","
            "\"video_ok\":%u,\"video_folder\":\"%s\",\"videos\":%u,\"last_video\":\"%s\","
            "\"recording\":%u,\"finalizing\":%u,\"rec_ms\":%u,\"rec_frames\":%u,"
-           "\"mic_ok\":%u,\"mic_rate\":%u,\"mic_gain\":%u,\"mic_rms\":%.3f,\"mic_peak\":%.3f}\n",
+           "\"mic_ok\":%u,\"mic_rate\":%u,\"mic_gain\":%u,\"mic_rms\":%.3f,\"mic_peak\":%.3f,"
+           "\"cv_ok\":%u,\"cv_mode\":%u,\"cv_preset\":%u,"
+           "\"cv_h_lo\":%u,\"cv_h_hi\":%u,\"cv_s_lo\":%u,\"cv_s_hi\":%u,"
+           "\"cv_v_lo\":%u,\"cv_v_hi\":%u,\"cv_erode\":%u,\"cv_dilate\":%u,"
+           "\"cv_min_area\":%u,\"cv_thr\":%u,\"cv_edge_lo\":%u,\"cv_edge_hi\":%u,"
+           "\"cv_blobs\":%d,\"cv_tracks\":%d,\"cv_mask_px\":%d,\"cv_ms\":%d,\"cv_track_dist\":%u,"
+           "\"face_ok\":%u,\"face_model\":%u,\"face_n\":%d,\"face_ms\":%d,\"face_feats\":%d,"
+           "\"face_detect\":%u,\"face_recog\":%u,\"face_thr\":%u,\"face_lock\":%u,"
+           "\"face_enroll_ok\":%d,\"face_enroll_id\":%d,\"face_enroll_got\":%d,\"face_enroll_need\":%d,"
+           "\"face_roster\":\"%s\",\"face_db\":\"%s\"}\n",
            _cam->sensorName(), (unsigned)_framesize, (unsigned)_out_w, (unsigned)_out_h,
            (unsigned)_out_w, (unsigned)_out_h, (unsigned)_cam->width(), (unsigned)_cam->height(),
            (unsigned)_quality, (unsigned)_frame_skip, (unsigned)_last_jpeg, (unsigned)_encode_ms,
@@ -1360,7 +1885,17 @@ void ESP32P4_MjpegServer::handleStatus() {
            (unsigned)(_recording && _h264 ? _h264->framesEncoded() : 0),
            micEnabled() ? 1u : 0u, (unsigned)(_mic ? _mic->sampleRate() : 0),
            (unsigned)(_mic ? _mic->gain() : 0), _mic ? _mic->rms() : 0.0f,
-           _mic ? _mic->peak() : 0.0f);
+           _mic ? _mic->peak() : 0.0f, _cv_on ? 1u : 0u, (unsigned)_cv.mode,
+           (unsigned)_cv.preset, (unsigned)_cv.lo.h, (unsigned)_cv.hi.h, (unsigned)_cv.lo.s,
+           (unsigned)_cv.hi.s, (unsigned)_cv.lo.v, (unsigned)_cv.hi.v, (unsigned)_cv.erode_it,
+           (unsigned)_cv.dilate_it, (unsigned)_cv.min_area, (unsigned)_cv.thr,
+           (unsigned)_cv.edge_lo, (unsigned)_cv.edge_hi, (int)_cv.blobs, (int)_cv.tracks,
+           (int)_cv.mask_px, (int)_cv.proc_ms, (unsigned)_cv.track_dist,
+           _face.on ? 1u : 0u, (unsigned)_face.model, (int)_face.faces, (int)_face.ms,
+           (int)_face.feats, _face.detect_en ? 1u : 0u, _face.recog_en ? 1u : 0u,
+           (unsigned)_face.thr_pct, faceResLocked() ? 1u : 0u, (int)_face.enroll_ok,
+           (int)_face.enroll_id, (int)_face.enroll_got, (int)_face.enroll_need, _face.roster,
+           _face.db_path[0] ? _face.db_path : "/sdcard/face/face.db");
   _http->send(200, "application/json", buf);
 }
 
@@ -1391,24 +1926,202 @@ void ESP32P4_MjpegServer::handleAudio() {
 bool ESP32P4_MjpegServer::applyControl(const String &var, int val) {
   if (var == "quality") {
     setQuality((uint8_t)val);
+    _face.settings_dirty = true;
     return true;
   }
   if (var == "frameskip") {
     setFrameSkip((uint8_t)val);
+    _face.settings_dirty = true;
     return true;
   }
-  if (var == "framesize") return setFramesize((uint8_t)val);
-  if (var == "hmirror") return _cam->setHMirror(val != 0);
-  if (var == "vflip") return _cam->setVFlip(val != 0);
-  if (var == "aec") return _cam->setAEC(val != 0);
-  if (var == "agc") return _cam->setAGC(val != 0);
-  if (var == "aec_value") return _cam->setExposure((uint16_t)val);
-  if (var == "agc_gain") return _cam->setGain((uint16_t)val);
-  if (var == "gainceiling") return _cam->setGainCeiling((uint16_t)val);
-  if (var == "colorbar" || var == "test_pattern") return _cam->setTestPattern(val != 0);
+  if (var == "framesize") {
+    bool ok = setFramesize((uint8_t)val);
+    if (ok) _face.settings_dirty = true;
+    return ok;
+  }
+  if (var == "hmirror") {
+    bool ok = _cam->setHMirror(val != 0);
+    if (ok) _face.settings_dirty = true;
+    return ok;
+  }
+  if (var == "vflip") {
+    bool ok = _cam->setVFlip(val != 0);
+    if (ok) _face.settings_dirty = true;
+    return ok;
+  }
+  if (var == "aec") {
+    bool ok = _cam->setAEC(val != 0);
+    if (ok) _face.settings_dirty = true;
+    return ok;
+  }
+  if (var == "agc") {
+    bool ok = _cam->setAGC(val != 0);
+    if (ok) _face.settings_dirty = true;
+    return ok;
+  }
+  if (var == "aec_value") {
+    bool ok = _cam->setExposure((uint16_t)val);
+    if (ok) _face.settings_dirty = true;
+    return ok;
+  }
+  if (var == "agc_gain") {
+    bool ok = _cam->setGain((uint16_t)val);
+    if (ok) _face.settings_dirty = true;
+    return ok;
+  }
+  if (var == "gainceiling") {
+    bool ok = _cam->setGainCeiling((uint16_t)val);
+    if (ok) _face.settings_dirty = true;
+    return ok;
+  }
+  if (var == "colorbar" || var == "test_pattern") {
+    bool ok = _cam->setTestPattern(val != 0);
+    if (ok) _face.settings_dirty = true;
+    return ok;
+  }
   if (var == "mic_gain") {
     if (!_mic || !_mic->ready()) return false;
-    return _mic->setGain(val);
+    bool ok = _mic->setGain(val);
+    if (ok) _face.settings_dirty = true;
+    return ok;
+  }
+  if (var == "face_model") {
+    _face.model = val;
+    _face.model_req = true;
+    _face.settings_dirty = true;
+    if (faceResLocked()) {
+      applyFaceForcedDims();
+      _size_dirty = true;
+    }
+    return true;
+  }
+  if (var == "face_detect") {
+    _face.detect_en = val != 0;
+    if (!_face.detect_en) {
+      _face.recog_en = false;
+      _face.enroll_req = false;
+      _face.enroll_cancel = true;
+      if (_face.enroll_ok == 2) _face.enroll_ok = 0;
+    }
+    applyFramesizeDims();
+    _size_dirty = true;
+    _face.settings_dirty = true;
+    return true;
+  }
+  if (var == "face_recog") {
+    // Recognition implies detection. Never touch face_model (that caused ESPDet→MSR reset).
+    if (val != 0) {
+      _face.detect_en = true;
+      _face.recog_en = true;
+      // Mutual exclusion: cancel any pending/in-progress enroll.
+      _face.enroll_req = false;
+      _face.enroll_cancel = true;
+      if (_face.enroll_ok == 2) _face.enroll_ok = 0;
+    } else {
+      _face.recog_en = false;
+    }
+    applyFramesizeDims();
+    _size_dirty = true;
+    _face.settings_dirty = true;
+    return true;
+  }
+  if (var == "face_thr") {
+    if (val < 10) val = 10;
+    if (val > 95) val = 95;
+    _face.thr_pct = val;
+    _face.thr_req = true;
+    _face.settings_dirty = true;
+    return true;
+  }
+  if (var == "face_enroll") {
+    // Keep recog_en as the user left it — FaceAi skips FR only while enroll is in progress.
+    _face.detect_en = true;
+    _face.enroll_cancel = false;
+    _face.enroll_req = true;
+    _face.enroll_ok = 2;
+    if (_face.model != 0) {
+      _face.model = 0;
+      _face.model_req = true;
+    }
+    applyFramesizeDims();
+    _size_dirty = true;
+    return true;
+  }
+  if (var == "face_clear") {
+    _face.clear_req = true;
+    return true;
+  }
+  if (var == "face_delete") {
+    _face.delete_id = val;
+    _face.delete_req = true;
+    return true;
+  }
+  if (!_cv_on) return false;
+  if (var == "cv_mode") {
+    _cv.mode = (uint8_t)val;
+    return true;
+  }
+  if (var == "cv_preset") {
+    ESP32P4_CvDash::applyPreset(_cv, (uint8_t)val);
+    return true;
+  }
+  if (var == "cv_h_lo") {
+    _cv.lo.h = (uint8_t)val;
+    _cv.preset = ESP32P4_CV_PRESET_CUSTOM;
+    return true;
+  }
+  if (var == "cv_h_hi") {
+    _cv.hi.h = (uint8_t)val;
+    _cv.preset = ESP32P4_CV_PRESET_CUSTOM;
+    return true;
+  }
+  if (var == "cv_s_lo") {
+    _cv.lo.s = (uint8_t)val;
+    _cv.preset = ESP32P4_CV_PRESET_CUSTOM;
+    return true;
+  }
+  if (var == "cv_s_hi") {
+    _cv.hi.s = (uint8_t)val;
+    _cv.preset = ESP32P4_CV_PRESET_CUSTOM;
+    return true;
+  }
+  if (var == "cv_v_lo") {
+    _cv.lo.v = (uint8_t)val;
+    _cv.preset = ESP32P4_CV_PRESET_CUSTOM;
+    return true;
+  }
+  if (var == "cv_v_hi") {
+    _cv.hi.v = (uint8_t)val;
+    _cv.preset = ESP32P4_CV_PRESET_CUSTOM;
+    return true;
+  }
+  if (var == "cv_erode") {
+    _cv.erode_it = (uint8_t)val;
+    return true;
+  }
+  if (var == "cv_dilate") {
+    _cv.dilate_it = (uint8_t)val;
+    return true;
+  }
+  if (var == "cv_min_area") {
+    _cv.min_area = (uint16_t)val;
+    return true;
+  }
+  if (var == "cv_thr") {
+    _cv.thr = (uint8_t)val;
+    return true;
+  }
+  if (var == "cv_edge_lo") {
+    _cv.edge_lo = (uint8_t)val;
+    return true;
+  }
+  if (var == "cv_edge_hi") {
+    _cv.edge_hi = (uint8_t)val;
+    return true;
+  }
+  if (var == "cv_track_dist") {
+    _cv.track_dist = (uint8_t)val;
+    return true;
   }
   return false;
 }
@@ -1419,7 +2132,39 @@ void ESP32P4_MjpegServer::handleControl() {
     return;
   }
   String var = _http->arg("var");
-  int val = _http->arg("val").toInt();
+  String sval = _http->arg("val");
+  if (var == "face_enroll_name") {
+    memset(_face.enroll_name, 0, sizeof(_face.enroll_name));
+    size_t n = sval.length();
+    if (n >= sizeof(_face.enroll_name)) n = sizeof(_face.enroll_name) - 1;
+    for (size_t i = 0; i < n; i++) {
+      char c = sval[i];
+      if (isalnum((unsigned char)c) || c == ' ' || c == '_' || c == '-' || c == '.') {
+        _face.enroll_name[i] = c;
+      } else {
+        _face.enroll_name[i] = '_';
+      }
+    }
+    _http->send(200, "text/plain", "1");
+    return;
+  }
+  if (var == "face_delete_name") {
+    memset(_face.delete_name, 0, sizeof(_face.delete_name));
+    size_t n = sval.length();
+    if (n >= sizeof(_face.delete_name)) n = sizeof(_face.delete_name) - 1;
+    for (size_t i = 0; i < n; i++) {
+      char c = sval[i];
+      if (isalnum((unsigned char)c) || c == ' ' || c == '_' || c == '-' || c == '.') {
+        _face.delete_name[i] = c;
+      } else {
+        _face.delete_name[i] = '_';
+      }
+    }
+    _face.delete_name_req = true;
+    _http->send(200, "text/plain", "1");
+    return;
+  }
+  int val = sval.toInt();
   if (!applyControl(var, val)) {
     _http->send(400, "text/plain", "unsupported or failed");
     return;

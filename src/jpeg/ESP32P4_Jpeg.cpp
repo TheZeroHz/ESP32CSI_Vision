@@ -11,6 +11,8 @@ bool ESP32P4_Jpeg::begin(uint16_t max_w, uint16_t max_h, uint8_t quality) {
   _quality = quality;
   _max_w = max_w;
   _max_h = max_h;
+  _last_w = 0;
+  _last_h = 0;
 
   jpeg_encode_engine_cfg_t eng = {};
   eng.intr_priority = 0;
@@ -39,6 +41,7 @@ bool ESP32P4_Jpeg::begin(uint16_t max_w, uint16_t max_h, uint8_t quality) {
     _in = (uint8_t *)esp32p4_psram_alloc((size_t)max_w * max_h * 2);
     _in_cap = (size_t)max_w * max_h * 2;
   }
+  if (_in) memset(_in, 0, _in_cap);
   return _in != nullptr;
 }
 
@@ -52,10 +55,17 @@ void ESP32P4_Jpeg::end() {
     _dec = nullptr;
   }
   if (_in) {
-    // jpeg_alloc buffers are not always heap_caps_free-safe; only free psram path if needed
     _in = nullptr;
     _in_cap = 0;
   }
+  _last_w = 0;
+  _last_h = 0;
+}
+
+void ESP32P4_Jpeg::clearInput() {
+  if (_in && _in_cap) memset(_in, 0, _in_cap);
+  _last_w = 0;
+  _last_h = 0;
 }
 
 size_t ESP32P4_Jpeg::encode(const camera_fb_t *fb, uint8_t *out, size_t out_cap) {
@@ -66,19 +76,42 @@ size_t ESP32P4_Jpeg::encode(const camera_fb_t *fb, uint8_t *out, size_t out_cap)
 size_t ESP32P4_Jpeg::encode(const uint8_t *rgb565, uint16_t w, uint16_t h, uint8_t *out,
                             size_t out_cap) {
   if (!_enc || !rgb565 || !out || !w || !h) return 0;
-  size_t rgb_bytes = (size_t)w * h * 2;
-  if (rgb_bytes > _in_cap) return 0;
-  memcpy(_in, rgb565, rgb_bytes);
+  if (w > _max_w || h > _max_h) return 0;
+
+  // HW JPEG MCU is 16×16 — pad smaller face-model sizes (e.g. 160×120) up to MCU.
+  uint16_t pw = (uint16_t)((w + 15u) & ~15u);
+  uint16_t ph = (uint16_t)((h + 15u) & ~15u);
+  if (pw > _max_w || ph > _max_h) return 0;
+
+  size_t pad_bytes = (size_t)pw * (size_t)ph * 2;
+  if (pad_bytes > _in_cap) return 0;
+
+  if (pw != _last_w || ph != _last_h) {
+    memset(_in, 0, _in_cap);
+    _last_w = pw;
+    _last_h = ph;
+  }
+
+  if (pw == w && ph == h) {
+    memcpy(_in, rgb565, pad_bytes);
+  } else {
+    // Re-clear only the used pad region when size unchanged but source is smaller.
+    memset(_in, 0, pad_bytes);
+    for (uint16_t y = 0; y < h; y++) {
+      memcpy(_in + (size_t)y * (size_t)pw * 2, rgb565 + (size_t)y * (size_t)w * 2,
+             (size_t)w * 2);
+    }
+  }
 
   jpeg_encode_cfg_t cfg = {};
-  cfg.width = w;
-  cfg.height = h;
+  cfg.width = pw;
+  cfg.height = ph;
   cfg.src_type = JPEG_ENCODE_IN_FORMAT_RGB565;
   cfg.sub_sample = JPEG_DOWN_SAMPLING_YUV422;
   cfg.image_quality = _quality;
   uint32_t jlen = 0;
-  if (jpeg_encoder_process((jpeg_encoder_handle_t)_enc, &cfg, _in, rgb_bytes, out, out_cap, &jlen) !=
-      ESP_OK) {
+  if (jpeg_encoder_process((jpeg_encoder_handle_t)_enc, &cfg, _in, (uint32_t)pad_bytes, out,
+                           out_cap, &jlen) != ESP_OK) {
     return 0;
   }
   if (jlen >= 2 && !(out[jlen - 2] == 0xFF && out[jlen - 1] == 0xD9) && jlen + 2 <= out_cap) {

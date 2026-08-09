@@ -49,10 +49,14 @@ class ESP32P4_H264 {
   /**
    * Start recording → only .mp4 is kept after closeFile(). Path must end with .mp4.
    * Optional raw PCM path is fused as a `sowt` audio track on close (then deleted).
+   * Accepts any mounted Arduino FS (SD_MMC, FFat, LittleFS, …).
    */
+  bool openMp4(fs::FS *fs, const char *mp4_path, const char *pcm_path = nullptr,
+               uint32_t pcm_rate_hz = 16000);
   bool openMp4(ESP32P4_Sd *sd, const char *mp4_path, const char *pcm_path = nullptr,
                uint32_t pcm_rate_hz = 16000);
   /** Prefer openMp4. Raw Annex-B only if path is not .mp4. */
+  bool openFile(fs::FS *fs, const char *path);
   bool openFile(ESP32P4_Sd *sd, const char *path);
   size_t encodeToFile(const camera_fb_t *fb);
   size_t encodeToFile(const uint8_t *rgb565, uint16_t w, uint16_t h);
@@ -83,7 +87,7 @@ class ESP32P4_H264 {
   uint32_t _frames = 0;
   uint32_t _pts = 0;
 
-  ESP32P4_Sd *_sd = nullptr;
+  fs::FS *_fs = nullptr;
   File _file;
   bool _file_open = false;
   bool _mp4_mode = false;

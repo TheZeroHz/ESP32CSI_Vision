@@ -15,6 +15,8 @@ class ESP32P4_Jpeg {
   size_t decode(const uint8_t *jpg, size_t jpg_len, uint8_t *rgb_out, size_t out_cap, uint32_t *w,
                 uint32_t *h);
   void setQuality(uint8_t q) { _quality = q < 1 ? 1 : (q > 100 ? 100 : q); }
+  /** Wipe encoder input so a smaller size cannot leak pixels from a prior frame. */
+  void clearInput();
 
  private:
   void *_enc = nullptr;
@@ -24,4 +26,6 @@ class ESP32P4_Jpeg {
   uint8_t _quality = 45;
   uint16_t _max_w = 0;
   uint16_t _max_h = 0;
+  uint16_t _last_w = 0;
+  uint16_t _last_h = 0;
 };
