@@ -4,7 +4,7 @@ Arduino library for **ESP32-P4 MIPI CSI** cameras.
 
 ## CSI sensors
 
-First-party MIPI drivers (no `ESP_Video`). `cam.begin(board)` **AUTO-probes** the registry. Full detail: [docs/CSI-Cameras.md](docs/CSI-Cameras.md).
+MIPI drivers with **AUTO-probes**. Full detail: [docs/CSI-Cameras.md](docs/CSI-Cameras.md).
 
 | Status | Sensors |
 | --- | --- |
