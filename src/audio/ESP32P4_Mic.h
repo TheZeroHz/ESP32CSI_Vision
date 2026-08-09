@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <ESP_I2S.h>
+#include <FS.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -25,6 +26,7 @@ class ESP32P4_Mic {
   /** Drain I2S: update levels; if a PCM file is open, append samples. Call often. */
   void poll();
 
+  bool startPcmFile(fs::FS *fs, const char *path);
   bool startPcmFile(ESP32P4_Sd *sd, const char *path);
   void stopPcmFile();
   bool pcmFileOpen() const { return _pcm_open; }
@@ -47,7 +49,7 @@ class ESP32P4_Mic {
   bool applyGainHw();
 
   I2SClass _i2s;
-  ESP32P4_Sd *_sd = nullptr;
+  fs::FS *_fs = nullptr;
   File _pcm;
   bool _ready = false;
   bool _pcm_open = false;

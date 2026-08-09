@@ -79,7 +79,13 @@ inline const char *mimeFor(const String &path) {
   if (lower.endsWith(".xml")) return "application/xml";
   if (lower.endsWith(".txt") || lower.endsWith(".log") || lower.endsWith(".md") ||
       lower.endsWith(".csv") || lower.endsWith(".ini") || lower.endsWith(".cfg") ||
-      lower.endsWith(".nfo") || lower.endsWith(".srt"))
+      lower.endsWith(".nfo") || lower.endsWith(".srt") || lower.endsWith(".cpp") ||
+      lower.endsWith(".cxx") || lower.endsWith(".cc") || lower.endsWith(".c") ||
+      lower.endsWith(".h") || lower.endsWith(".hpp") || lower.endsWith(".hh") ||
+      lower.endsWith(".ino") || lower.endsWith(".py") || lower.endsWith(".cmake") ||
+      lower.endsWith(".yml") || lower.endsWith(".yaml") || lower.endsWith(".toml") ||
+      lower.endsWith(".sh") || lower.endsWith(".bat") || lower.endsWith(".ps1") ||
+      lower.endsWith(".cmake") || lower.endsWith(".mak") || lower.endsWith(".mk"))
     return "text/plain; charset=utf-8";
   return "application/octet-stream";
 }
@@ -91,7 +97,13 @@ inline bool isTextPath(const String &path) {
          lower.endsWith(".csv") || lower.endsWith(".json") || lower.endsWith(".xml") ||
          lower.endsWith(".ini") || lower.endsWith(".cfg") || lower.endsWith(".nfo") ||
          lower.endsWith(".srt") || lower.endsWith(".html") || lower.endsWith(".htm") ||
-         lower.endsWith(".css") || lower.endsWith(".js");
+         lower.endsWith(".css") || lower.endsWith(".js") || lower.endsWith(".cpp") ||
+         lower.endsWith(".cxx") || lower.endsWith(".cc") || lower.endsWith(".c") ||
+         lower.endsWith(".h") || lower.endsWith(".hpp") || lower.endsWith(".hh") ||
+         lower.endsWith(".ino") || lower.endsWith(".py") || lower.endsWith(".cmake") ||
+         lower.endsWith(".yml") || lower.endsWith(".yaml") || lower.endsWith(".toml") ||
+         lower.endsWith(".sh") || lower.endsWith(".bat") || lower.endsWith(".ps1") ||
+         lower.endsWith(".mak") || lower.endsWith(".mk") || lower.endsWith(".cmake");
 }
 
 inline bool isBlockedPreview(const String &path) {

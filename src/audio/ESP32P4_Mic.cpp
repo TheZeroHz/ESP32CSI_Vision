@@ -152,14 +152,18 @@ void ESP32P4_Mic::end() {
 }
 
 bool ESP32P4_Mic::startPcmFile(ESP32P4_Sd *sd, const char *path) {
+  return startPcmFile((sd && sd->mounted()) ? &sd->fs() : nullptr, path);
+}
+
+bool ESP32P4_Mic::startPcmFile(fs::FS *fs, const char *path) {
   stopPcmFile();
-  if (!_ready || !sd || !sd->mounted() || !path || !path[0]) return false;
-  _pcm = sd->fs().open(path, FILE_WRITE);
+  if (!_ready || !fs || !path || !path[0]) return false;
+  _pcm = fs->open(path, FILE_WRITE);
   if (!_pcm) {
     Serial.printf("Mic: open PCM %s failed\n", path);
     return false;
   }
-  _sd = sd;
+  _fs = fs;
   strncpy(_pcm_path, path, sizeof(_pcm_path) - 1);
   _pcm_path[sizeof(_pcm_path) - 1] = '\0';
   _pcm_bytes = 0;
@@ -175,7 +179,7 @@ void ESP32P4_Mic::stopPcmFile() {
     _pcm_open = false;
     Serial.printf("Mic: PCM closed  bytes=%llu\n", (unsigned long long)_pcm_bytes);
   }
-  _sd = nullptr;
+  _fs = nullptr;
 }
 
 void ESP32P4_Mic::poll() {

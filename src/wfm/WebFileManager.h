@@ -130,6 +130,7 @@ class WebFileManager {
   void handleVolumes();
   void handleList();
   void handleText();
+  void handleTextSave();
   void handleDetails();
   void handleDelete();
   void handleMkdir();

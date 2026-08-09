@@ -62,7 +62,7 @@ button,input{font:inherit}
 .side-item .si svg{width:16px;height:16px;display:block}
 .side-item .si.drive svg{fill:var(--acc)}
 .side-item .si.folder svg{fill:var(--folder);stroke:#8a6914;stroke-width:.5}
-.main{display:flex;flex-direction:column;min-width:0;background:var(--pane);min-height:0}
+.main{display:flex;flex-direction:column;min-width:0;background:var(--pane);min-height:0;position:relative}
 .cols{display:grid;grid-template-columns:28px minmax(140px,1fr) 120px 100px;padding:0 4px;border-bottom:1px solid var(--line);background:#faf9f8;color:var(--muted);font-size:12px;font-weight:600}
 .cols span{padding:8px;border-right:1px solid var(--line)}
 .cols span:last-child{border-right:0}
@@ -78,6 +78,9 @@ button,input{font:inherit}
 .upload-panel .urow{display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:6px}
 .upload-panel .ubar{height:8px;border-radius:99px;background:#edebe9;overflow:hidden}
 .upload-panel .ubar i{display:block;height:100%;width:0;background:var(--acc);transition:width .15s linear}
+.main.drop-target{outline:2px dashed var(--acc);outline-offset:-4px;background:rgba(0,120,212,.06)}
+.drop-banner{display:none;position:absolute;inset:8px;z-index:5;align-items:center;justify-content:center;pointer-events:none;border:2px dashed var(--acc);border-radius:8px;background:rgba(255,255,255,.92);color:var(--acc);font-weight:600;font-size:14px}
+.main.drop-target .drop-banner{display:flex}
 .selbar{display:none;align-items:center;gap:8px;padding:6px 10px;background:#e8f4ff;border-bottom:1px solid #90c6f0;font-size:12px}
 .selbar.on{display:flex}
 .row .c{padding:3px 8px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
@@ -107,9 +110,14 @@ button,input{font:inherit}
 .stage img,.stage video{max-width:100%;max-height:min(46vh,420px);object-fit:contain;display:block}
 .stage audio{width:100%}
 .stage pre{margin:0;width:100%;max-height:min(46vh,420px);overflow:auto;padding:10px;background:#1e1e1e;color:#d4d4d4;font:12px/1.45 var(--mono);white-space:pre-wrap;word-break:break-word;border-radius:4px}
+.stage textarea.txt-edit{margin:0;width:100%;min-height:min(40vh,360px);max-height:min(50vh,480px);resize:vertical;padding:10px;background:#1e1e1e;color:#d4d4d4;font:12px/1.45 var(--mono);border:1px solid #333;border-radius:4px;box-sizing:border-box}
 .stage .hint{color:var(--muted);text-align:center;padding:16px;max-width:28ch}
-.preview-bar{display:none;gap:8px;align-items:center;margin-top:8px}
+.stage .play-ready{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:20px;text-align:center;color:var(--muted);width:100%}
+.stage .play-ready .tbtn.primary{min-width:96px}
+.preview-bar{display:none;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
 .preview-bar.on{display:flex}
+.preview-bar .tbtn.primary{background:var(--acc);color:#fff;border-color:var(--acc)}
+.modal-b textarea.txt-edit{width:100%;min-height:50vh;resize:vertical;padding:10px;background:#1e1e1e;color:#d4d4d4;font:12px/1.45 var(--mono);border:1px solid #333;border-radius:4px;box-sizing:border-box}
 .details{font:12px/1.45 var(--mono)}
 .details dt{color:var(--muted);margin-top:8px}
 .details dd{margin:2px 0 0;overflow-wrap:anywhere;word-break:break-word}
@@ -216,7 +224,8 @@ button,input{font:inherit}
       <button class="tbtn primary" type="button" id="btnPreview" disabled>Preview</button>
       <button class="tbtn" type="button" id="btnDownload" disabled>Download</button>
       <button class="tbtn" type="button" id="btnMoveMarked" disabled>Move marked...</button>
-      <button class="tbtn" type="button" id="btnUpload">Upload</button>
+      <button class="tbtn" type="button" id="btnUpload" title="Select one or more files (Ctrl/Shift click in the dialog)">Upload files</button>
+      <button class="tbtn" type="button" id="btnUploadFolder" title="Upload a whole folder (keeps subfolders)">Upload folder</button>
     </div>
   </div>
 
@@ -240,7 +249,8 @@ button,input{font:inherit}
       <div id="quick"></div>
     </aside>
 
-    <section class="main">
+    <section class="main" id="mainPane">
+      <div class="drop-banner" id="dropBanner">Drop files here to upload</div>
       <div class="upload-panel" id="uploadPanel">
         <div class="urow"><span id="uploadLabel">Transferring...</span><span id="uploadPct">0%</span></div>
         <div class="urow" style="margin-bottom:4px"><span class="dim" id="uploadSpeed">--</span><span class="dim" id="uploadEta"></span></div>
@@ -286,6 +296,7 @@ button,input{font:inherit}
 <div class="menu" id="menu"></div>
 <div class="toast" id="toast"></div>
 <input type="file" id="filePick" multiple hidden/>
+<input type="file" id="folderPick" webkitdirectory directory multiple hidden/>
 <div class="modal-bg" id="modalBg">
   <div class="modal" role="dialog" aria-modal="true">
     <div class="modal-h">
@@ -340,6 +351,7 @@ var menu=document.getElementById('menu');
 var path='/', busy=false, entries=[], selected=null, clipboard=null, clipMode=null, marked={};
 var searchMode=false, hist=[], histI=-1, blobUrl=null, suppressHist=false;
 var previewToken=0, previewAbort=null, previewObjectUrl=null;
+var sidePreviewTimer=null, sidePreviewItem=null;
 var xferBusy=false;
 var authUser=sessionStorage.getItem('wfm_user')||'';
 var authPass=sessionStorage.getItem('wfm_pass')||'';
@@ -380,7 +392,7 @@ function kindOf(name,isDir,isVol,vtype){
   if(['jpg','jpeg','png','gif','webp','bmp','svg'].indexOf(e)>=0) return 'img';
   if(['mp4','webm','mov','avi','mkv'].indexOf(e)>=0) return 'vid';
   if(['mp3','wav','ogg','aac','m4a','flac','opus'].indexOf(e)>=0) return 'aud';
-  if(['txt','log','md','csv','json','xml','ini','cfg','nfo','srt','html','htm','css','js'].indexOf(e)>=0) return 'txt';
+  if(['txt','log','md','csv','json','xml','ini','cfg','nfo','srt','html','htm','css','js','cpp','cxx','cc','c','h','hpp','hh','ino','py','cmake','yml','yaml','toml','sh','bat','ps1','mak','mk'].indexOf(e)>=0) return 'txt';
   return 'file';
 }
 function typeLabel(name,isDir,isVol,vtype){
@@ -418,6 +430,26 @@ function rowIcon(e){
   return k==='dir'?iconFolder():iconFile(k);
 }
 function toast(m){var t=document.getElementById('toast');t.textContent=m;t.style.display='block';clearTimeout(t._t);t._t=setTimeout(function(){t.style.display='none'},2200)}
+
+async function saveTextFile(path, text){
+  var ctrl=new AbortController();
+  var timer=setTimeout(function(){ctrl.abort()},30000);
+  try{
+    var headers={'Content-Type':'text/plain; charset=UTF-8'};
+    var a=authHeader(); if(a) headers['Authorization']=a;
+    var r=await fetch('/api/text/save?path='+encodeURIComponent(path),{
+      method:'POST', headers:headers, body:text, signal:ctrl.signal, credentials:'omit'
+    });
+    clearTimeout(timer);
+    var j=null;
+    try{ j=await r.json(); }catch(e){}
+    if(!r.ok) throw new Error((j&&j.error)||('HTTP '+r.status));
+    return j;
+  }catch(e){
+    clearTimeout(timer);
+    throw e;
+  }
+}
 
 var _dlgResolve=null;
 function closeDlg(result){
@@ -578,6 +610,8 @@ function stopPreview(){
   });
   if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=null}
   if(blobUrl){URL.revokeObjectURL(blobUrl);blobUrl=null}
+  var sideSave=document.getElementById('btnSideSaveTxt');
+  if(sideSave) sideSave.style.display='none';
   setPreviewBusy(false,'');
 }
 
@@ -665,12 +699,14 @@ async function loadStatus(){
 }
 
 function clearPreview(){
+  if(sidePreviewTimer){clearTimeout(sidePreviewTimer);sidePreviewTimer=null}
+  sidePreviewItem=null;
   stopPreview();
   document.getElementById('pvTitle').textContent='Details';
   document.getElementById('pvMeta').textContent='Select an item';
   var stage=document.getElementById('pvStage');
   stage.classList.add('light');
-  stage.innerHTML='<div class="hint">Select a file, then Preview (or right-click).</div>';
+  stage.innerHTML='<div class="hint">Select a file to preview it here.</div>';
   document.getElementById('pvDetails').innerHTML='';
   document.getElementById('selMeta').textContent='No item selected';
 }
@@ -687,36 +723,291 @@ async function fillDetails(full){
   }catch(e){}
 }
 
-async function showPreview(item){
-  if(!item||item.dir||item.volume){toast('Folders have no preview');return}
+function wireTextEditors(item, full, text, truncated, withModal){
+  var stage=document.getElementById('pvStage');
+  var modal=document.getElementById('modalBody');
+  stage.classList.remove('light');
+  stage.innerHTML='<textarea class="txt-edit" id="stageTxtEditor" spellcheck="false"></textarea>';
+  if(withModal){
+    modal.classList.remove('light');
+    modal.innerHTML='<textarea class="txt-edit" id="modalTxtEditor" spellcheck="false"></textarea>'
+      +'<div class="preview-bar on" style="margin-top:8px">'
+      +'<button class="tbtn primary" type="button" id="btnSaveModalTxt">Save</button>'
+      +'<span class="dim" id="modalTxtState">'+(truncated?'Read-only preview (truncated — download to edit full file)':'Editable · Save writes to SD')+'</span></div>';
+  }
+  var me=document.getElementById('modalTxtEditor');
+  var se=document.getElementById('stageTxtEditor');
+  if(me){ me.value=text; if(truncated) me.readOnly=true; }
+  if(se){ se.value=text; if(truncated) se.readOnly=true; }
+  function syncEditors(src){
+    if(me && src!==me) me.value=src.value;
+    if(se && src!==se) se.value=src.value;
+  }
+  if(me) me.oninput=function(){syncEditors(me)};
+  if(se) se.oninput=function(){syncEditors(se)};
+  async function doSave(){
+    if(truncated){ toast('File truncated in preview — cannot save safely'); return; }
+    var val=(me&&document.activeElement===me)?me.value:(se?se.value:(me?me.value:''));
+    var st=document.getElementById('modalTxtState')||document.getElementById('previewState');
+    if(st) st.textContent='Saving...';
+    try{
+      await saveTextFile(full, val);
+      if(st) st.textContent='Saved';
+      toast('Saved '+item.name);
+    }catch(err){
+      if(st) st.textContent='Save failed';
+      toast(err.message||'save failed');
+    }
+  }
+  var btn=document.getElementById('btnSaveModalTxt');
+  if(btn){ btn.disabled=truncated; btn.onclick=doSave; }
+  var bar=document.getElementById('previewBar');
+  var sideSave=document.getElementById('btnSideSaveTxt');
+  if(!sideSave){
+    sideSave=document.createElement('button');
+    sideSave.id='btnSideSaveTxt';
+    sideSave.type='button';
+    sideSave.className='tbtn primary';
+    sideSave.textContent='Save';
+    bar.insertBefore(sideSave, bar.firstChild);
+  }
+  sideSave.style.display=truncated?'none':'';
+  sideSave.disabled=!!truncated;
+  sideSave.onclick=doSave;
+  document.getElementById('btnCancelPreview').textContent='Cancel preview';
+  document.getElementById('btnCancelPreview').className='tbtn danger';
+  document.getElementById('btnCancelPreview').onclick=cancelAllPreview;
+  setPreviewBusy(true, truncated?'Read-only (truncated)':'Editable · Save to SD');
+}
+
+function showMediaPlayReady(item, kind){
+  var stage=document.getElementById('pvStage');
+  stage.classList.add('light');
+  stage.innerHTML='<div class="play-ready">'
+    +'<div>'+esc(kind==='vid'?'Video':'Audio')+' selected</div>'
+    +'<div style="font-size:12px">Press Play to start streaming (saves bandwidth until then).</div>'
+    +'<button class="tbtn primary" type="button" id="btnSidePlay">Play</button>'
+    +'</div>';
+  setPreviewBusy(false,'Waiting for Play');
+  var btn=document.getElementById('btnSidePlay');
+  if(btn) btn.onclick=function(){ playMediaPreview(item, false); };
+}
+
+function bindMediaPlayer(player, token, kind, modalEl){
+  if(!player) return;
+  var busyMsg=kind==='aud'?'Playing audio...':'Playing... Cancel anytime';
+  player.addEventListener('loadstart',function(){if(token===previewToken) setPreviewBusy(true, kind==='aud'?'Buffering audio...':'Buffering... Cancel anytime')});
+  if(kind==='vid'){
+    player.addEventListener('loadedmetadata',function(){if(token===previewToken) setPreviewBusy(true,'Ready... Cancel anytime')});
+  }
+  player.addEventListener('canplay',function(){if(token===previewToken) setPreviewBusy(true,busyMsg)});
+  player.addEventListener('playing',function(){if(token===previewToken) setPreviewBusy(true,busyMsg)});
+  player.addEventListener('ended',function(){if(token===previewToken) setPreviewBusy(false,'Finished')});
+  player.addEventListener('error',function(){
+    if(token!==previewToken) return;
+    var code=player.error?player.error.code:0;
+    var why=kind==='aud'
+      ? 'Unable to play this audio in the browser. Try Download, or use WAV/MP3.'
+      : 'Unable to play this file in the browser.';
+    if(kind==='vid'){
+      if(code===2) why='Network error while streaming (Range/port 81). Try Download.';
+      else if(code===3) why='Decode error - codec may be HEVC/H.265 or unsupported. Use Download or remux to H.264+AAC MP4.';
+      else if(code===4) why='Format/codec not supported by this browser. Prefer H.264 + AAC MP4.';
+    }
+    if(modalEl){
+      modalEl.classList.add('light');
+      modalEl.innerHTML='<div class="hint">'+esc(why)+'</div>';
+    }
+    var stage=document.getElementById('pvStage');
+    stage.classList.add('light');
+    stage.innerHTML='<div class="hint">'+esc(why)+'</div>';
+    setPreviewBusy(false,'Play failed');
+  });
+}
+
+async function playMediaPreview(item, openModal){
+  if(!item||item.dir||item.volume) return;
   stopPreview();
   var token=++previewToken;
   var kind=kindOf(item.name,false);
   var full=fullOf(item);
   var ext=extOf(item.name);
-  document.getElementById('pvTitle').textContent=item.name;
-  document.getElementById('pvMeta').textContent=typeLabel(item.name,false)+' | '+fmt(item.size);
-  openModalShell(item);
+  var view=viewUrl(full);
   var stage=document.getElementById('pvStage');
   var modal=document.getElementById('modalBody');
-  stage.classList.add('light');
-  stage.innerHTML='<div class="hint">Open in popup preview...</div>';
+  document.getElementById('pvTitle').textContent=item.name;
+  document.getElementById('pvMeta').textContent=typeLabel(item.name,false)+' | '+fmt(item.size);
+  if(openModal) openModalShell(item);
+  if(kind==='aud'){
+    var audOk=['wav','mp3','ogg','aac','m4a','flac','opus'];
+    if(audOk.indexOf(ext)<0){
+      var msg='This audio format cannot be previewed here. Use Download.';
+      stage.classList.add('light'); stage.innerHTML='<div class="hint">'+esc(msg)+'</div>';
+      if(openModal){ modal.classList.add('light'); modal.innerHTML='<div class="hint">'+esc(msg)+'</div>'; }
+      setPreviewBusy(false,'Not previewable');
+      return;
+    }
+    var mime={wav:'audio/wav',mp3:'audio/mpeg',ogg:'audio/ogg',aac:'audio/aac',m4a:'audio/mp4',flac:'audio/flac',opus:'audio/ogg'}[ext]||'audio/*';
+    var audioHtml='<div style="padding:16px;width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px">'
+      +'<div style="color:#ddd;font-size:13px">'+esc(item.name)+'</div>'
+      +'<audio id="sidePlayer" controls autoplay preload="auto" style="width:min(520px,92%)">'
+      +'<source src="'+view+'" type="'+mime+'"/>'
+      +'</audio></div>';
+    stage.classList.remove('light');
+    stage.innerHTML=audioHtml;
+    if(openModal){
+      modal.classList.remove('light');
+      modal.innerHTML=audioHtml.replace('id="sidePlayer"','id="modalPlayer"');
+      stage.innerHTML='<div class="hint">Audio playing in popup. Cancel preview to free the stream.</div>';
+      bindMediaPlayer(document.getElementById('modalPlayer'), token, 'aud', modal);
+    }else{
+      bindMediaPlayer(document.getElementById('sidePlayer'), token, 'aud', null);
+    }
+    setPreviewBusy(true,'Buffering audio...');
+    return;
+  }
+  if(kind==='vid'){
+    if(!(ext==='mp4'||ext==='webm')){
+      var vmsg='Only MP4/WEBM can be previewed here. Use Download.';
+      stage.classList.add('light'); stage.innerHTML='<div class="hint">'+esc(vmsg)+'</div>';
+      if(openModal){ modal.classList.add('light'); modal.innerHTML='<div class="hint">'+esc(vmsg)+'</div>'; }
+      setPreviewBusy(false,'Not previewable');
+      return;
+    }
+    // One stream only — dual video tags stall the single file server.
+    if(openModal){
+      modal.classList.remove('light');
+      modal.innerHTML='<video id="modalPlayer" controls autoplay playsinline preload="auto" src="'+view+'"></video>';
+      stage.classList.remove('light');
+      stage.innerHTML='<div class="hint">Playing in popup. Cancel preview to free the stream.</div>';
+      bindMediaPlayer(document.getElementById('modalPlayer'), token, 'vid', modal);
+    }else{
+      stage.classList.remove('light');
+      stage.innerHTML='<video id="sidePlayer" controls autoplay playsinline preload="auto" src="'+view+'"></video>';
+      bindMediaPlayer(document.getElementById('sidePlayer'), token, 'vid', null);
+    }
+    setPreviewBusy(true,'Buffering... Cancel anytime');
+  }
+}
+
+async function sidePreview(item){
+  if(!item){ clearPreview(); return; }
+  if(item!==selected && item!==sidePreviewItem) return;
+  stopPreview();
+  var token=++previewToken;
+  var kind=kindOf(item.name,!!item.dir,!!item.volume,item.vtype);
+  var full=fullOf(item);
+  var ext=extOf(item.name);
+  var stage=document.getElementById('pvStage');
+  document.getElementById('pvTitle').textContent=item.name;
+  document.getElementById('pvMeta').textContent=typeLabel(item.name,!!item.dir,!!item.volume,item.vtype)+(item.dir||item.volume?'':(' | '+fmt(item.size)));
+  document.getElementById('btnCancelPreview').textContent='Cancel preview';
+  document.getElementById('btnCancelPreview').classList.add('danger');
+  document.getElementById('btnCancelPreview').classList.remove('primary');
+  document.getElementById('btnCancelPreview').onclick=function(){ cancelAllPreview(); };
+
+  if(item.dir||item.volume){
+    stage.classList.add('light');
+    stage.innerHTML='<div class="hint">'+(item.volume?'Storage volume':'Folder')+' — double-click to open.</div>';
+    setPreviewBusy(false,'');
+    await fillDetails(full);
+    return;
+  }
   if(ext==='avi'||ext==='mkv'||ext==='mov'||ext==='mjpg'||ext==='mjpeg'){
-    var msg='This format cannot be previewed in the browser. Streaming AVI can freeze the board. Use Download.';
-    modal.classList.add('light');
-    modal.innerHTML='<div class="hint">'+esc(msg)+'</div>';
-    stage.innerHTML='<div class="hint">'+esc(msg)+'</div>';
+    var blocked='This format cannot be previewed in the browser. Streaming AVI can freeze the board. Use Download.';
+    stage.classList.add('light');
+    stage.innerHTML='<div class="hint">'+esc(blocked)+'</div>';
     setPreviewBusy(false,'Not previewable');
     await fillDetails(full);
     return;
   }
-  setPreviewBusy(true, kind==='vid'?'Loading video... Cancel anytime':(kind==='aud'?'Loading audio...':'Loading...'));
+  if(kind==='vid'||kind==='aud'){
+    showMediaPlayReady(item, kind);
+    await fillDetails(full);
+    return;
+  }
   previewAbort=new AbortController();
   var view=viewUrl(full);
   try{
     if(kind==='img'){
-      // Direct <img src> avoids CORS/blob fetch failures on :81.
-      // Only one stream (popup) so the file server is not double-hit.
+      setPreviewBusy(true,'Loading image...');
+      stage.classList.remove('light');
+      stage.innerHTML='<img id="sideImg" alt="'+esc(item.name)+'" src="'+view+'"/>';
+      var img=document.getElementById('sideImg');
+      if(img){
+        img.onload=function(){ if(token===previewToken) setPreviewBusy(false,''); };
+        img.onerror=function(){
+          if(token!==previewToken) return;
+          stage.classList.add('light');
+          stage.innerHTML='<div class="hint">Image preview failed. Try Download.</div>';
+          setPreviewBusy(false,'Preview failed');
+        };
+      }
+    }else if(kind==='txt'){
+      setPreviewBusy(true,'Loading text...');
+      var j=await fetchJson('/api/text?path='+encodeURIComponent(full),25000,previewAbort.signal);
+      if(token!==previewToken) return;
+      wireTextEditors(item, full, j.text||'', !!j.truncated, false);
+    }else{
+      stage.classList.add('light');
+      stage.innerHTML='<div class="hint">No preview for this type. Use Download or right-click.</div>';
+      setPreviewBusy(false,'');
+    }
+    if(token===previewToken) await fillDetails(full);
+  }catch(e){
+    if(token!==previewToken) return;
+    if(e && (e.name==='AbortError' || String(e.message||'').indexOf('abort')>=0)){
+      setPreviewBusy(false,'Cancelled');
+      return;
+    }
+    stage.classList.add('light');
+    stage.innerHTML='<div class="hint">Preview failed: '+esc(e.message||e)+'</div>';
+    setPreviewBusy(false,'');
+  }
+}
+
+function queueSidePreview(item){
+  sidePreviewItem=item;
+  if(sidePreviewTimer) clearTimeout(sidePreviewTimer);
+  sidePreviewTimer=setTimeout(function(){
+    sidePreviewTimer=null;
+    if(selected===item) sidePreview(item);
+  }, 60);
+}
+
+async function showPreview(item){
+  if(!item||item.dir||item.volume){toast('Folders have no preview');return}
+  var kind=kindOf(item.name,false);
+  var ext=extOf(item.name);
+  document.getElementById('pvTitle').textContent=item.name;
+  document.getElementById('pvMeta').textContent=typeLabel(item.name,false)+' | '+fmt(item.size);
+  if(ext==='avi'||ext==='mkv'||ext==='mov'||ext==='mjpg'||ext==='mjpeg'){
+    openModalShell(item);
+    var msg='This format cannot be previewed in the browser. Streaming AVI can freeze the board. Use Download.';
+    document.getElementById('modalBody').classList.add('light');
+    document.getElementById('modalBody').innerHTML='<div class="hint">'+esc(msg)+'</div>';
+    document.getElementById('pvStage').classList.add('light');
+    document.getElementById('pvStage').innerHTML='<div class="hint">'+esc(msg)+'</div>';
+    setPreviewBusy(false,'Not previewable');
+    await fillDetails(fullOf(item));
+    return;
+  }
+  if(kind==='vid'||kind==='aud'){
+    await playMediaPreview(item, true);
+    await fillDetails(fullOf(item));
+    return;
+  }
+  stopPreview();
+  var token=++previewToken;
+  var full=fullOf(item);
+  openModalShell(item);
+  var stage=document.getElementById('pvStage');
+  var modal=document.getElementById('modalBody');
+  previewAbort=new AbortController();
+  var view=viewUrl(full);
+  try{
+    if(kind==='img'){
+      setPreviewBusy(true,'Loading...');
       modal.classList.remove('light');
       modal.innerHTML='<img id="modalImg" alt="'+esc(item.name)+'" src="'+view+'"/>';
       stage.classList.remove('light');
@@ -727,90 +1018,20 @@ async function showPreview(item){
         img.onerror=function(){
           if(token!==previewToken) return;
           modal.classList.add('light');
-          modal.innerHTML='<div class="hint">JPG/image preview failed. Try Download. If a transfer is running, wait for it to finish.</div>';
+          modal.innerHTML='<div class="hint">JPG/image preview failed. Try Download.</div>';
           setPreviewBusy(false,'Preview failed');
         };
       }
-    }else if(kind==='aud'){
-      var audOk=['wav','mp3','ogg','aac','m4a','flac','opus'];
-      if(audOk.indexOf(ext)<0){
-        modal.classList.add('light');
-        modal.innerHTML='<div class="hint">This audio format cannot be previewed here. Use Download.</div>';
-        stage.innerHTML='<div class="hint">No audio preview for this type.</div>';
-        setPreviewBusy(false,'Not previewable');
-        await fillDetails(full);
-        return;
-      }
-      var mime={wav:'audio/wav',mp3:'audio/mpeg',ogg:'audio/ogg',aac:'audio/aac',m4a:'audio/mp4',flac:'audio/flac',opus:'audio/ogg'}[ext]||'audio/*';
-      modal.classList.remove('light');
-      modal.innerHTML='<div style="padding:24px;width:100%;background:#111;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px">'
-        +'<div style="color:#ddd;font-size:13px">'+esc(item.name)+'</div>'
-        +'<audio id="modalPlayer" controls autoplay preload="auto" style="width:min(520px,92%)">'
-        +'<source src="'+view+'" type="'+mime+'"/>'
-        +'Your browser does not support audio preview.'
-        +'</audio></div>';
-      stage.classList.remove('light');
-      stage.innerHTML='<div class="hint">Audio playing in popup. Cancel preview to free the stream.</div>';
-      var player=document.getElementById('modalPlayer');
-      if(player){
-        player.addEventListener('loadstart',function(){if(token===previewToken) setPreviewBusy(true,'Buffering audio...')});
-        player.addEventListener('canplay',function(){if(token===previewToken) setPreviewBusy(true,'Playing audio...')});
-        player.addEventListener('playing',function(){if(token===previewToken) setPreviewBusy(true,'Playing audio...')});
-        player.addEventListener('ended',function(){if(token===previewToken) setPreviewBusy(false,'Finished')});
-        player.addEventListener('error',function(){
-          if(token!==previewToken) return;
-          var why='Unable to play this audio in the browser. Try Download, or use WAV/MP3.';
-          modal.classList.add('light');
-          modal.innerHTML='<div class="hint">'+esc(why)+'</div>';
-          setPreviewBusy(false,'Play failed');
-        });
-      }
-      setPreviewBusy(true,'Buffering audio...');
-    }else if(kind==='vid'){
-      if(!(ext==='mp4'||ext==='webm')){
-        modal.classList.add('light');
-        modal.innerHTML='<div class="hint">Only MP4/WEBM can be previewed here. Use Download.</div>';
-        setPreviewBusy(false,'Not previewable');
-        await fillDetails(full);
-        return;
-      }
-      // One stream only - dual <video src> to :81 would stall the single file server.
-      modal.classList.remove('light');
-      modal.innerHTML='<video id="modalPlayer" controls autoplay playsinline preload="auto" src="'+view+'"></video>';
-      stage.classList.remove('light');
-      stage.innerHTML='<div class="hint">Playing in popup. Cancel preview to free the stream.</div>';
-      var player=document.getElementById('modalPlayer');
-      if(player){
-        player.addEventListener('loadstart',function(){if(token===previewToken) setPreviewBusy(true,'Buffering... Cancel anytime')});
-        player.addEventListener('loadedmetadata',function(){if(token===previewToken) setPreviewBusy(true,'Ready... Cancel anytime')});
-        player.addEventListener('canplay',function(){if(token===previewToken) setPreviewBusy(true,'Playing... Cancel anytime')});
-        player.addEventListener('playing',function(){if(token===previewToken) setPreviewBusy(true,'Playing... Cancel anytime')});
-        player.addEventListener('error',function(){
-          if(token!==previewToken) return;
-          var code=player.error?player.error.code:0;
-          var why='Unable to play this file in the browser.';
-          if(code===2) why='Network error while streaming (Range/port 81). Try Download.';
-          else if(code===3) why='Decode error - codec may be HEVC/H.265 or unsupported. Use Download or remux to H.264+AAC MP4.';
-          else if(code===4) why='Format/codec not supported by this browser. Prefer H.264 + AAC MP4.';
-          document.getElementById('modalBg').classList.add('open');
-          document.getElementById('modalTitle').textContent=item.name;
-          document.getElementById('modalBody').classList.add('light');
-          document.getElementById('modalBody').innerHTML='<div class="hint">'+esc(why)+'</div>';
-          setPreviewBusy(false,'Play failed');
-        });
-      }
-      setPreviewBusy(true,'Buffering... Cancel anytime');
     }else if(kind==='txt'){
+      setPreviewBusy(true,'Loading...');
       var j=await fetchJson('/api/text?path='+encodeURIComponent(full),25000,previewAbort.signal);
       if(token!==previewToken) return;
-      modal.classList.remove('light');
-      modal.innerHTML='<pre>'+esc(j.text||'')+(j.truncated?'\n\n... truncated':'')+'</pre>';
-      stage.classList.remove('light');
-      stage.innerHTML='<pre>'+esc(j.text||'')+(j.truncated?'\n\n... truncated':'')+'</pre>';
-      setPreviewBusy(false,'');
+      wireTextEditors(item, full, j.text||'', !!j.truncated, true);
     }else{
       modal.classList.add('light');
       modal.innerHTML='<div class="hint">No preview for this type. Use Download.</div>';
+      stage.classList.add('light');
+      stage.innerHTML='<div class="hint">No preview for this type.</div>';
       setPreviewBusy(false,'');
     }
     if(token===previewToken) await fillDetails(full);
@@ -845,7 +1066,7 @@ function showUploadProgress(on, label, pct, speedText, etaText){
     document.getElementById('uploadEta').textContent='';
   }
 }
-function xhrUpload(file, dir){
+function xhrUpload(file, dir, progressCb){
   return new Promise(function(resolve, reject){
     var xhr=new XMLHttpRequest();
     var fd=new FormData();
@@ -867,10 +1088,13 @@ function xhrUpload(file, dir){
       var avgBps=ev.loaded/elapsed;
       var bps=instBps>0?instBps:avgBps;
       var left=ev.total>ev.loaded?(ev.total-ev.loaded)/Math.max(bps,1):0;
-      var pct=(ev.loaded/ev.total)*100;
-      showUploadProgress(true,
-        'Uploading '+file.name+' ('+fmt(ev.loaded)+' / '+fmt(ev.total)+')',
-        pct, fmtSpeed(bps)+'  avg '+fmtSpeed(avgBps), fmtEta(left));
+      if(typeof progressCb==='function'){
+        progressCb({loaded:ev.loaded,total:ev.total,bps:bps,avgBps:avgBps,eta:left});
+      }else{
+        showUploadProgress(true,
+          'Uploading '+file.name+' ('+fmt(ev.loaded)+' / '+fmt(ev.total)+')',
+          (ev.loaded/ev.total)*100, fmtSpeed(bps)+'  avg '+fmtSpeed(avgBps), fmtEta(left));
+      }
     };
     xhr.onload=function(){
       var j={}; try{j=JSON.parse(xhr.responseText||'{}')}catch(e){}
@@ -882,6 +1106,83 @@ function xhrUpload(file, dir){
     xhr.onabort=function(){reject(new Error('upload aborted'))};
     xhr.send(fd);
   });
+}
+async function ensureUploadDirs(targetDir){
+  if(!targetDir || targetDir==='/' || targetDir===path) return;
+  var base=path;
+  var rel=targetDir;
+  if(base!=='/' && targetDir.indexOf(base+'/')===0) rel=targetDir.slice(base.length);
+  else if(base==='/' && targetDir.charAt(0)==='/') rel=targetDir;
+  else return;
+  if(rel.charAt(0)==='/') rel=rel.slice(1);
+  if(!rel) return;
+  var parts=rel.split('/').filter(Boolean);
+  var cur=base;
+  for(var i=0;i<parts.length;i++){
+    var next=(cur==='/')?('/'+parts[i]):(cur+'/'+parts[i]);
+    try{
+      await fetchJson('/api/mkdir?dir='+encodeURIComponent(cur)+'&name='+encodeURIComponent(parts[i]));
+    }catch(e){
+      var msg=String(e.message||e);
+      if(!/already exists|exists/i.test(msg)) throw e;
+    }
+    cur=next;
+  }
+}
+async function uploadFiles(fileList){
+  if(!fileList || !fileList.length) return;
+  if(searchMode){toast('Open a folder before uploading');return}
+  if(window.WFM_MULTI && path==='/'){toast('Open a volume (SD / LittleFS) before uploading');return}
+  if(xferBusy){toast('Transfer already in progress');return}
+  var files=[].slice.call(fileList);
+  if(!files.length) return;
+  var dir=path;
+  var totalBytes=0;
+  for(var t=0;t<files.length;t++) totalBytes+=files[t].size||0;
+  var doneBytes=0;
+  var ok=0, failed=[];
+  xferBusy=true;
+  showUploadProgress(true, 'Preparing '+files.length+' file'+(files.length>1?'s':'')+'...', 0, '--', '');
+  for(var i=0;i<files.length;i++){
+    var file=files[i];
+    var rel=(file.webkitRelativePath||file.name||'').replace(/\\/g,'/');
+    var parts=rel.split('/').filter(Boolean);
+    var destDir=dir;
+    if(parts.length>1){
+      destDir=join(dir, parts.slice(0,-1).join('/'));
+      try{ await ensureUploadDirs(destDir); }
+      catch(e){
+        failed.push(file.name+': mkdir '+(e.message||e));
+        continue;
+      }
+    }
+    try{
+      await xhrUpload(file, destDir, function(p){
+        var overall=totalBytes? ((doneBytes+p.loaded)/totalBytes)*100 : ((i+p.loaded/Math.max(p.total,1))/files.length)*100;
+        showUploadProgress(true,
+          'Uploading '+(i+1)+'/'+files.length+': '+file.name+' ('+fmt(p.loaded)+' / '+fmt(p.total)+')',
+          overall, fmtSpeed(p.bps)+'  avg '+fmtSpeed(p.avgBps), fmtEta(p.eta));
+      });
+      doneBytes+=file.size||0;
+      ok++;
+    }catch(e){
+      failed.push(file.name+': '+(e.message||e));
+      showUploadProgress(true, 'Failed '+(i+1)+'/'+files.length+': '+file.name, totalBytes?(doneBytes/totalBytes)*100:0, '--', '');
+    }
+  }
+  if(ok && !failed.length){
+    showUploadProgress(true, 'Uploaded '+ok+' file'+(ok>1?'s':''), 100, '--', '');
+    toast(ok>1?('Uploaded '+ok+' files'):('Uploaded '+files[0].name));
+  }else if(ok && failed.length){
+    showUploadProgress(true, 'Uploaded '+ok+', failed '+failed.length, 100, '--', '');
+    toast('Uploaded '+ok+', failed '+failed.length);
+    console.warn('Upload failures', failed);
+  }else{
+    showUploadProgress(true, 'Upload failed: '+(failed[0]||'unknown'), 0, '--', '');
+    toast('Upload failed: '+(failed[0]||'unknown'));
+  }
+  setTimeout(function(){showUploadProgress(false); xferBusy=false}, failed.length&&!ok?2500:900);
+  await go(path);
 }
 async function downloadFile(full, name, knownSize){
   xferBusy=true;
@@ -941,31 +1242,6 @@ async function downloadFile(full, name, knownSize){
     toast('Download failed: '+(e.message||e));
     setTimeout(function(){showUploadProgress(false); xferBusy=false}, 2500);
   }
-}
-async function uploadFiles(fileList){
-  if(!fileList || !fileList.length) return;
-  if(searchMode){toast('Open a folder before uploading');return}
-  if(window.WFM_MULTI && path==='/'){toast('Open a volume (SD / LittleFS) before uploading');return}
-  if(xferBusy){toast('Transfer already in progress');return}
-  var dir=path;
-  xferBusy=true;
-  showUploadProgress(true, 'Preparing upload...', 0, '--', '');
-  for(var i=0;i<fileList.length;i++){
-    var file=fileList[i];
-    try{
-      showUploadProgress(true, 'Uploading '+file.name+' ('+(i+1)+'/'+fileList.length+')', 0, '--', '');
-      await xhrUpload(file, dir);
-      showUploadProgress(true, 'Uploaded '+file.name, 100, null, '');
-      toast('Uploaded '+file.name);
-    }catch(e){
-      showUploadProgress(true, 'Failed: '+(e.message||e), 0, '--', '');
-      toast('Upload failed: '+(e.message||e));
-      setTimeout(function(){showUploadProgress(false); xferBusy=false}, 2500);
-      return;
-    }
-  }
-  setTimeout(function(){showUploadProgress(false); xferBusy=false}, 800);
-  await go(path);
 }
 function canCreateHere(dir){
   if(searchMode) return false;
@@ -1228,9 +1504,10 @@ function selectItem(item,rowEl){
   if(rowEl) rowEl.classList.add('on');
   document.getElementById('selMeta').textContent=item?(item.name+' selected'):'No item selected';
   document.getElementById('pvTitle').textContent=item?item.name:'Details';
-  document.getElementById('pvMeta').textContent=item?(typeLabel(item.name,!!item.dir)+(item.dir?'':(' | '+fmt(item.size)))):'Select an item';
+  document.getElementById('pvMeta').textContent=item?(typeLabel(item.name,!!item.dir,!!item.volume,item.vtype)+(item.dir||item.volume?'':(' | '+fmt(item.size)))):'Select an item';
   setRibbon();
-  if(item) fillDetails(fullOf(item));
+  if(item) queueSidePreview(item);
+  else clearPreview();
 }
 
 function hideMenu(){menu.classList.remove('open')}
@@ -1239,15 +1516,18 @@ function openMenu(x,y,item){
   var rows=listEl.querySelectorAll('.row');
   for(var i=0;i<rows.length;i++) if(rows[i].getAttribute('data-key')===fullOf(item)) rows[i].classList.add('on');
   var canPrev=!item.dir && ['img','vid','aud','txt'].indexOf(kindOf(item.name,false))>=0;
+  var canEdit=!item.dir && kindOf(item.name,false)==='txt';
   var html='';
   if(item.dir) html+='<button type="button" data-act="open">Open</button>';
   else html+='<button type="button" data-act="preview"'+(canPrev?'':' disabled')+'>Preview</button>';
+  if(canEdit) html+='<button type="button" data-act="edit">Edit</button>';
   html+='<button type="button" data-act="details">Properties</button><div class="sep"></div>';
   html+='<button type="button" data-act="cut">Cut</button><button type="button" data-act="copy">Copy</button>';
   if(clipboard) html+='<button type="button" data-act="paste">Paste</button>';
   html+='<div class="sep"></div><button type="button" data-act="rename">Rename</button><button type="button" data-act="move">Move to...</button>';
   if(!item.dir) html+='<button type="button" data-act="download">Download</button>';
-  html+='<button type="button" data-act="upload">Upload here</button>';
+  html+='<button type="button" data-act="upload">Upload files here</button>';
+  html+='<button type="button" data-act="uploadfolder">Upload folder here</button>';
   if(item.dir && !item.volume){
     html+='<div class="sep"></div><button type="button" data-act="newfolder">New folder here</button><button type="button" data-act="newfile">New file here</button>';
   }
@@ -1265,12 +1545,17 @@ async function runAction(act,item){
   var full=item?fullOf(item):path;
   try{
     if(act==='open'){searchMode=false;await go(full);return}
-    if(act==='preview'){await showPreview(item);return}
+    if(act==='preview' || act==='edit'){await showPreview(item);return}
     if(act==='details'){selectItem(item,null);await fillDetails(full);document.getElementById('pvStage').classList.add('light');document.getElementById('pvStage').innerHTML='<div class="hint">Properties shown below.</div>';return}
     if(act==='download'){await downloadFile(full, item.name, item.size);return}
     if(act==='upload'){
       if(item.dir){path=full; setCrumbs(path)}
       document.getElementById('filePick').click();
+      return;
+    }
+    if(act==='uploadfolder'){
+      if(item.dir){path=full; setCrumbs(path)}
+      document.getElementById('folderPick').click();
       return;
     }
     if(act==='newfolder'){
@@ -1448,9 +1733,48 @@ document.getElementById('modalCancel').onclick=cancelAllPreview;
 document.getElementById('modalClose').onclick=function(){closeModal()};
 document.getElementById('modalBg').addEventListener('click',function(ev){if(ev.target===this) closeModal()});
 document.getElementById('btnUpload').onclick=function(){document.getElementById('filePick').click()};
+document.getElementById('btnUploadFolder').onclick=function(){document.getElementById('folderPick').click()};
 document.getElementById('btnNewFolder').onclick=function(){createNewFolder(path)};
 document.getElementById('btnNewFile').onclick=function(){createNewFile(path)};
 document.getElementById('filePick').onchange=function(){uploadFiles(this.files); this.value='';};
+document.getElementById('folderPick').onchange=function(){uploadFiles(this.files); this.value='';};
+(function setupDropUpload(){
+  var pane=document.getElementById('mainPane');
+  if(!pane) return;
+  var dragDepth=0;
+  function canDrop(){
+    if(xferBusy||searchMode) return false;
+    if(window.WFM_MULTI && path==='/') return false;
+    return true;
+  }
+  function setDrop(on){ pane.classList.toggle('drop-target', !!on); }
+  pane.addEventListener('dragenter',function(ev){
+    if(!ev.dataTransfer||!ev.dataTransfer.types||ev.dataTransfer.types.indexOf('Files')<0) return;
+    ev.preventDefault(); dragDepth++; setDrop(canDrop());
+  });
+  pane.addEventListener('dragover',function(ev){
+    if(!ev.dataTransfer||!ev.dataTransfer.types||ev.dataTransfer.types.indexOf('Files')<0) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect=canDrop()?'copy':'none';
+    setDrop(canDrop());
+  });
+  pane.addEventListener('dragleave',function(ev){
+    ev.preventDefault();
+    dragDepth=Math.max(0,dragDepth-1);
+    if(!dragDepth) setDrop(false);
+  });
+  pane.addEventListener('drop',function(ev){
+    ev.preventDefault(); dragDepth=0; setDrop(false);
+    if(!canDrop()){
+      if(window.WFM_MULTI && path==='/') toast('Open a volume folder before uploading');
+      else if(searchMode) toast('Open a folder before uploading');
+      else toast('Transfer already in progress');
+      return;
+    }
+    var files=ev.dataTransfer&&ev.dataTransfer.files;
+    if(files&&files.length) uploadFiles(files);
+  });
+})();
 document.getElementById('btnRefresh').onclick=function(){go(path);loadStatus()};
 document.getElementById('btnHome').onclick=function(){searchMode=false;go('/')};
 document.getElementById('btnUp').onclick=function(){

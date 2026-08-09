@@ -175,6 +175,14 @@ void WebFileManager::bindRoutes() {
     if (!requireAuth(*_ui)) return;
     handleText();
   });
+  _ui->on("/api/text", HTTP_POST, [this]() {
+    if (!requireAuth(*_ui)) return;
+    handleTextSave();
+  });
+  _ui->on("/api/text/save", HTTP_POST, [this]() {
+    if (!requireAuth(*_ui)) return;
+    handleTextSave();
+  });
   _ui->on("/api/details", HTTP_GET, [this]() {
     if (!requireAuth(*_ui)) return;
     handleDetails();
@@ -540,6 +548,71 @@ void WebFileManager::handleText() {
   free(raw);
   _ui->send(200, "application/json", json);
   free(json);
+}
+
+void WebFileManager::handleTextSave() {
+  String path = _ui->hasArg("path") ? _ui->arg("path") : "";
+  WfmStorage *store = nullptr;
+  String local;
+  if (!resolve(path, store, local) || !store || !isTextPath(local)) {
+    sendJsonErr(*_ui, 400, "not a text path");
+    return;
+  }
+
+  // Prefer raw POST body ("plain"); also accept form field "text".
+  // Empty body is valid (clear file).
+  String body;
+  if (_ui->hasArg("plain")) {
+    body = _ui->arg("plain");
+  } else if (_ui->hasArg("text")) {
+    body = _ui->arg("text");
+  } else {
+    sendJsonErr(*_ui, 400, "missing text body");
+    return;
+  }
+
+  const size_t kMax = 48 * 1024;
+  if (body.length() > kMax) {
+    sendJsonErr(*_ui, 413, "text too large (max 48KB)");
+    return;
+  }
+
+  store->lock();
+  // Overwrite atomically-ish: truncate via FILE_WRITE.
+  File f = store->fs().open(local, FILE_WRITE);
+  if (!f || f.isDirectory()) {
+    if (f) f.close();
+    store->unlock();
+    sendJsonErr(*_ui, 404, "not found");
+    return;
+  }
+  size_t wrote = 0;
+  if (body.length()) {
+    wrote = f.write((const uint8_t *)body.c_str(), body.length());
+  }
+  f.flush();
+  f.close();
+  store->unlock();
+
+  if (wrote != body.length()) {
+    sendJsonErr(*_ui, 500, "write incomplete");
+    return;
+  }
+
+  char buf[96];
+  snprintf(buf, sizeof(buf), "{\"ok\":1,\"path\":\"");
+  // Minimal JSON — path may need escaping; keep simple for ASCII paths.
+  String out = "{\"ok\":1,\"bytes\":";
+  out += String((unsigned)wrote);
+  out += ",\"path\":\"";
+  for (size_t i = 0; i < path.length(); i++) {
+    char c = path[i];
+    if (c == '"' || c == '\\') out += '\\';
+    out += c;
+  }
+  out += "\"}";
+  _ui->send(200, "application/json", out);
+  (void)buf;
 }
 
 void WebFileManager::handleDetails() {
