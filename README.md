@@ -1,151 +1,64 @@
-<p align="center">
-  <img src="docs/images/banner.png" alt="ESP32CSI_Vision — MIPI CSI Computer Vision for Arduino IDE" width="100%">
-</p>
-
 # ESP32CSI_Vision
 
-**Arduino IDE–ready MIPI CSI computer vision for ESP32**
+Arduino library for **ESP32-P4 MIPI CSI** cameras: capture, JPEG/H.264, MJPEG web UI, SD, OpenCV-like CV, and ESP-DL face detect/recognize.
 
-Capture frames from CSI cameras, encode JPEG in hardware, stream a live webcam UI over Wi‑Fi, run motion DSP, and (with ESP-IDF) detect faces with ESP-DL.
-
-Named for **CSI + vision** — not locked to one chip. **ESP32-P4 today**; other CSI-capable Espressif SoCs later.
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Arduino IDE](https://img.shields.io/badge/Arduino%20IDE-supported-brightgreen)](https://www.arduino.cc/en/software)
-[![Arduino-ESP32](https://img.shields.io/badge/Arduino--ESP32-3.3.x-blue)](https://github.com/espressif/arduino-esp32)
-[![MIPI CSI](https://img.shields.io/badge/Interface-MIPI%20CSI-orange)](https://www.espressif.com/)
-[![GitHub](https://img.shields.io/badge/GitHub-thezerohz%2FESP32CSI__Vision-black)](https://github.com/thezerohz/ESP32CSI_Vision)
-
-**Author:** [Rakib Hasan](https://github.com/thezerohz) ([@thezerohz](https://github.com/thezerohz))
-
----
-
-## Table of contents
-
-- [Why this library](#why-this-library)
-- [What you get](#what-you-get)
-- [Pipeline](#pipeline)
-- [Requirements](#requirements)
-- [Install (Arduino IDE)](#install-arduino-ide)
-- [Quick start (5 minutes)](#quick-start-5-minutes)
-- [Wi‑Fi MJPEG webcam](#wi-fi-mjpeg-webcam)
-- [HTTP API](#http-api)
-- [Board presets](#board-presets)
-- [API reference](#api-reference)
-- [Examples](#examples)
-- [ESP-IDF face detect](#esp-idf-face-detect)
-- [Arduino IDE board settings](#arduino-ide-board-settings)
-- [Troubleshooting](#troubleshooting)
-- [Compatibility headers](#compatibility-headers)
-- [License](#license)
-
----
-
-## Why this library
-
-| Pain | What ESP32CSI_Vision does |
-| --- | --- |
-| CSI on ESP32 is hard to wire up in Arduino | One `#include`, board preset, `cam.begin()` |
-| Streaming blocks settings UI | Dual ports: UI on **:80**, MJPEG on **:81** |
-| Names like `ESP32P4_*` lock the brand to one SoC | Library is **CSI_Vision** — backend is P4 today |
-| Face models need ESP-DL | Clear split: Arduino for capture/stream; IDF example for faces |
-
----
-
-## What you get
-
-| Feature | Arduino IDE | ESP-IDF |
-| --- | :---: | :---: |
-| OV5647 / IMX708 MIPI CSI → RGB565 | Yes | Yes |
-| PSRAM multi-framebuffer capture | Yes | Yes |
-| Hardware JPEG encode / decode | Yes | Yes |
-| PPA scale / rotate / mirror | Yes | Yes |
-| Motion DSP | Yes | Yes |
-| Wi‑Fi MJPEG + live settings UI | Yes | Yes |
-| Bundled WebFileManager (SD explorer) | Yes | Yes |
-| WHO-style async frame pipeline | Yes | Yes |
-| ESP-DL human face detect | — | Yes (`idf_examples/08_FaceDetect`) |
-
----
-
-## Pipeline
-
-<p align="center">
-  <img src="docs/images/architecture.png" alt="CSI → PSRAM → JPEG → WiFi MJPEG → Face Detect" width="900">
-</p>
-
-```text
-Sensor (OV5647 / IMX708)
-        │  MIPI CSI + ISP
-        ▼
-   RGB565 frames in PSRAM  (multi-FB)
-        │
-   ┌────┼────────────────┐
-   ▼    ▼                ▼
- JPEG  PPA scale      Motion DSP
-   │
-   ▼
- Wi‑Fi MJPEG UI  (:80 settings / :81 stream)
-   │
-   └─► ESP-DL face detect  (ESP-IDF only)
+```cpp
+#include <ESP32CSI_Vision.h>
 ```
 
----
-
-## Requirements
-
-### Hardware (current backend)
-
-- **SoC:** ESP32-P4 with MIPI CSI
-- **PSRAM:** enabled (required for multi-FB + JPEG)
-- **Camera:** OV5647 or IMX708 (I²C probe / auto)
-- **Tested board:** Guition JC-ESP32P4-M3 (also presets for Waveshare Nano, Function EV)
-- **Wi‑Fi (Guition M3):** ESP-Hosted C6 over SDIO
-
-### Software
-
-| Tool | Version |
-| --- | --- |
-| [Arduino IDE](https://www.arduino.cc/en/software) | 2.x recommended |
-| [arduino-esp32](https://github.com/espressif/arduino-esp32) | **3.3.x** |
-| ESP-IDF (face example only) | **5.4 / 5.5** |
+**Target:** ESP32-P4 + PSRAM · **Arduino-ESP32 3.3.x** · Tested board: Guition JC-ESP32P4-M3 (OV5647 / IMX708)
 
 ---
 
-## Install (Arduino IDE)
+## Install
 
-### Option A — ZIP / GitHub
-
-1. Download or clone:  
-   `https://github.com/thezerohz/ESP32CSI_Vision`
-2. In Arduino IDE: **Sketch → Include Library → Add .ZIP Library…**  
-   or copy the folder to:
+Copy or clone into:
 
 ```text
 Documents/Arduino/libraries/ESP32CSI_Vision
 ```
 
-3. Restart Arduino IDE. Confirm under **Sketch → Include Library → ESP32CSI_Vision**.
+Board settings (typical):
 
-### Option B — PlatformIO
+| Setting | Value |
+| --- | --- |
+| Board | ESP32P4 Dev Module |
+| PSRAM | **Enabled** |
+| Flash Size | 16MB (if applicable) |
+| Partition | `app3M_fat9M_16MB` (or similar large app) |
 
-```ini
-lib_deps = https://github.com/thezerohz/ESP32CSI_Vision.git
+FQBN example:
+
+```text
+esp32:esp32:esp32p4:PSRAM=enabled,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB
 ```
-
-### Verify install
-
-```cpp
-#include <ESP32CSI_Vision.h>
-```
-
-If compile fails with “No such file”, the library folder name/path is wrong (must contain `library.properties` and `src/ESP32CSI_Vision.h`).
 
 ---
 
-## Quick start (5 minutes)
+## Modules (what you get)
 
-Minimal capture loop — open **File → Examples → ESP32CSI_Vision → 01_CamTest**.
+| Module | Class / API | Purpose |
+| --- | --- | --- |
+| Camera | `ESP32P4_Camera` | MIPI CSI → RGB565 in PSRAM |
+| JPEG | `ESP32P4_Jpeg` | HW encode / decode |
+| PPA | `ESP32P4_Ppa` | HW scale / rotate90 / mirror / RGB565→gray |
+| Stream | `ESP32P4_MjpegServer` | Web UI `:80` + MJPEG `:81` |
+| SD | `ESP32P4_Sd` | microSD mount / files |
+| Capture | `enableSdCapture()` | JPEG stills → `/IMG` |
+| Record | `enableVideoRecord()` | H.264 MP4 → `/VIDEO` |
+| Mic | `ESP32P4_Mic` | ES8311 levels + PCM into MP4 |
+| CV | `ESP32P4_Cv` | Gray, blur, thresh, morph, HSV blobs, edges, draw |
+| OpenCV core | `esp_cv::Mat` / `cv::Mat` | Mat, Point, Rect, Scalar, ROI, PSRAM |
+| Face | `ESP32P4_FaceAi` | Detect + enroll + recognize (`.espdl` on SD) |
+| Files | `WebFileManager` | Browser for SD (usually `:82`) |
+| DSP | `ESP32P4_Dsp` | Motion / frame difference |
+| Mem | `esp32p4_psram_*` | Aligned PSRAM alloc |
+
+---
+
+## Quick start
+
+### Capture a frame
 
 ```cpp
 #include <ESP32CSI_Vision.h>
@@ -154,104 +67,29 @@ ESP32P4_Camera cam;
 
 void setup() {
   Serial.begin(115200);
-  delay(1200);
-
-  // Board preset wires CSI / I2C / LDO for you
   if (!cam.begin(ESP32P4_BOARD_GUITION_M3)) {
-    Serial.println("camera begin FAILED");
     while (true) delay(1000);
   }
-
-  Serial.printf("sensor=%s %ux%u\n",
-                cam.sensorName(), cam.width(), cam.height());
 }
 
 void loop() {
   camera_fb_t *fb = cam.capture(2000);  // timeout ms
-  if (!fb) {
-    Serial.println("capture timeout");
-    return;
-  }
-
-  // fb->buf  = RGB565 pixels in PSRAM
-  // fb->len  = width * height * 2
-  Serial.printf("frame %ux%u  %u bytes\n",
-                fb->width, fb->height, (unsigned)fb->len);
-
-  cam.release(fb);  // always release
+  if (!fb) return;
+  // fb->buf = RGB565, fb->len = w*h*2
+  cam.release(fb);                      // always release
 }
 ```
 
-### JPEG snapshot
+### MJPEG web UI
 
 ```cpp
-#include <ESP32CSI_Vision.h>
-
-ESP32P4_Camera cam;
-ESP32P4_Jpeg jpeg;
-uint8_t *jpg;
-
-void setup() {
-  Serial.begin(115200);
-  cam.begin(ESP32P4_BOARD_GUITION_M3);
-  jpeg.begin(cam.width(), cam.height(), 45);           // quality 1–100
-  jpg = (uint8_t *)esp32p4_psram_alloc(200 * 1024);
-}
-
-void loop() {
-  camera_fb_t *fb = cam.capture();
-  if (!fb || !jpg) return;
-
-  size_t n = jpeg.encode(fb, jpg, 200 * 1024);
-  cam.release(fb);
-
-  Serial.printf("jpeg %u bytes\n", (unsigned)n);
-  delay(500);
-}
-```
-
----
-
-## Wi‑Fi MJPEG webcam
-
-<p align="center">
-  <img src="docs/images/mjpeg-ui.png" alt="MJPEG settings UI mock" width="900">
-</p>
-
-Example: **04_WiFiMjpeg**
-
-1. Edit Wi‑Fi SSID/password in the sketch.
-2. On Guition M3, keep the C6 SDIO pin map (or set yours).
-3. Upload with PSRAM enabled.
-4. Open Serial Monitor @ **115200** → note the printed IP.
-5. Browser:
-   - **UI / settings:** `http://<ip>/`
-   - **MJPEG stream:** `http://<ip>:81/stream`
-
-```cpp
-#include <WiFi.h>
-#include <ESP32CSI_Vision.h>
-
 ESP32P4_Camera cam;
 ESP32P4_MjpegServer stream;
 
 void setup() {
-  Serial.begin(115200);
   cam.begin(ESP32P4_BOARD_GUITION_M3);
-
-  // Guition M3 ESP-Hosted C6 SDIO (adjust for your board)
-  WiFi.setPins(18, 19, 14, 15, 16, 17, 54);
-  WiFi.mode(WIFI_STA);
-  WiFi.setSleep(false);
-  WiFi.begin("YOUR_SSID", "YOUR_PASS");
-  while (WiFi.status() != WL_CONNECTED) delay(400);
-
-  // port 80 = UI; stream auto-binds :81 so settings stay responsive
-  stream.begin(&cam, 80, 35);  // quality ~35 = faster; 50–60 sharper
-
-  Serial.printf("UI     http://%s/\n", WiFi.localIP().toString().c_str());
-  Serial.printf("stream http://%s:%u/stream\n",
-                WiFi.localIP().toString().c_str(), stream.streamPort());
+  // WiFi / Ethernet bring-up here…
+  stream.begin(&cam, 80, 35);   // UI :80, stream :81, JPEG quality 35
 }
 
 void loop() {
@@ -259,74 +97,50 @@ void loop() {
 }
 ```
 
-### Desktop viewer
+Open `http://<ip>/` (settings) and `http://<ip>:81/stream` (MJPEG).
 
-```bash
-pip install -r examples/04_WiFiMjpeg/requirements.txt
-python examples/04_WiFiMjpeg/cam_wifi_viewer.py 192.168.0.3 81
-```
-
----
-
-## HTTP API
-
-| Endpoint | Port | Method | Role |
-| --- | :---: | --- | --- |
-| `/` | **80** | GET | Settings UI + live preview |
-| `/control?var=…&val=…` | **80** | GET | Change a setting live |
-| `/status` | **80** | GET | JSON status |
-| `/jpg` or `/capture` | **80** | GET | Single JPEG snapshot |
-| `/stream` | **81** | GET | Multipart MJPEG (may block that port only) |
-
-### Common `/control` variables
-
-| `var` | Example `val` | Effect |
-| --- | --- | --- |
-| `quality` | `1`–`100` | JPEG quality |
-| `framesize` | `0`–`4` | Stream size via PPA (SVGA→QQVGA) |
-| `frameskip` | `0`+ | Skip N frames between encodes |
-| `hmirror` / `vflip` | `0`/`1` | Mirror / flip |
-| `aec` / `agc` | `0`/`1` | Auto exposure / gain |
-| `exposure` / `gain` | sensor units | Manual exposure / gain |
-| `gainceiling` | sensor units | Gain ceiling |
-| `pattern` | `0`/`1` | Sensor test pattern |
-
-**Stream framesize enum**
-
-| Value | Name | Size |
-| :---: | --- | --- |
-| 0 | `ESP32P4_STREAM_SVGA` | 800×640 (native) |
-| 1 | `ESP32P4_STREAM_VGA` | 640×480 |
-| 2 | `ESP32P4_STREAM_HVGA` | 480×320 |
-| 3 | `ESP32P4_STREAM_QVGA` | 320×240 |
-| 4 | `ESP32P4_STREAM_QQVGA` | 160×120 |
-
----
-
-## Board presets
+### Stills + video record
 
 ```cpp
-cam.begin(ESP32P4_BOARD_GUITION_M3);      // Guition JC-ESP32P4-M3 (default)
-cam.begin(ESP32P4_BOARD_WAVESHARE_NANO);
-cam.begin(ESP32P4_BOARD_FUNCTION_EV);
+ESP32P4_Sd sd;
+ESP32P4_H264 h264;
+ESP32P4_Mic mic;
+
+sd.begin(ESP32P4_BOARD_GUITION_M3);
+h264.begin(640, 480, 30, 1500000);
+mic.begin(16000);
+
+stream.begin(&cam, 80, 35);
+stream.enableSdCapture(&sd, "/IMG");           // Capture → SD
+stream.enableVideoRecord(&sd, &h264, "/VIDEO"); // Record / Stop
+if (mic.ready()) stream.enableMic(&mic);
 ```
 
-Custom pins / sensor:
+### Face detect / enroll (Arduino)
+
+Models on SD (FAT):
+
+```text
+/models/p4/human_face_detect_msr_s8_v1.espdl
+/models/p4/human_face_detect_mnp_s8_v1.espdl
+/models/p4/human_face_feat_mfn_s8_v1.espdl      // enroll / recognize
+```
 
 ```cpp
-esp32p4_cam_config_t cfg = esp32p4_cam_config_default();
-cfg.sda = 7;
-cfg.scl = 8;
-cfg.sensor = ESP32P4_SENSOR_OV5647;   // or IMX708 / AUTO
-cfg.fb_count = 3;                     // PSRAM framebuffers
-cfg.frame_size = ESP32P4_FRAMESIZE_800X640;
-if (!cam.begin(cfg)) { /* fail */ }
+ESP32P4_FaceAi face;
+face.begin(ESP32P4_FaceDetect::MSRMNP_S8_V1, "/sdcard/face/face.db", "/sdcard/face/names.txt");
+
+esp32p4_face_id_t out[8];
+int n = face.run(rgb565, w, h, out, 8, /*recognize=*/true);
+ESP32P4_FaceAi::draw(rgb565, w, h, out, n);
+
+face.requestEnroll("Alice");   // N samples → one feature
+face.cancelEnroll();
+face.deleteName("Alice");
+face.setThresh(0.5f);
 ```
 
-| Sensor | Typical I²C | Notes |
-| --- | --- | --- |
-| OV5647 | `0x36` | Common Raspberry Pi–style CSI module |
-| IMX708 | probed | Supported driver in tree |
+See example `21_EthFaceWeb`.
 
 ---
 
@@ -334,192 +148,221 @@ if (!cam.begin(cfg)) { /* fail */ }
 
 ### `ESP32P4_Camera`
 
-| Method | Description |
+| Call | Meaning |
 | --- | --- |
-| `begin(board)` / `begin(cfg)` | Init CSI + ISP + PSRAM FBs |
-| `end()` | Tear down |
-| `capture(timeout_ms)` | Wait for a frame; returns `camera_fb_t*` or `nullptr` |
-| `release(fb)` | Return framebuffer to the pool |
-| `width()` / `height()` | Active resolution |
+| `begin(board)` / `begin(cfg)` | Init CSI + ISP + PSRAM framebuffers |
+| `end()` | Shutdown |
+| `capture(timeout_ms)` | Next RGB565 frame, or `nullptr` |
+| `release(fb)` | Return FB to pool |
+| `width()` / `height()` | Active size |
 | `sensorName()` / `detected()` | Sensor info |
-| `setHMirror` / `setVFlip` | Geometry |
-| `setAEC` / `setAGC` / `setExposure` / `setGain` / `setGainCeiling` | Exposure path (OV5647) |
-| `setTestPattern(bool)` | Color bars / pattern |
-| Matching `get*()` helpers | Read back settings |
+| `setHMirror` / `setVFlip` | Geometry (+ ISP Bayer sync) |
+| `setAEC` / `setAGC` | Auto exposure / gain |
+| `setExposure(lines)` / `setGain` / `setGainCeiling` | Manual exposure path |
+| `get*()` counterparts | Read back |
+| `setTestPattern(bool)` | Sensor color bars |
 
-**`camera_fb_t`**
+**Boards:** `ESP32P4_BOARD_GUITION_M3`, `WAVESHARE_NANO`, `FUNCTION_EV`, or custom `esp32p4_cam_config_t`.
 
-| Field | Meaning |
-| --- | --- |
-| `buf` | Pixel buffer (RGB565) |
-| `len` | Byte length |
-| `width` / `height` | Pixels |
-| `format` | `ESP32P4_PIXFORMAT_RGB565` (typical) |
-| `timestamp_us` | Capture time |
+**`camera_fb_t`:** `buf`, `len`, `width`, `height`, `format`, `timestamp_us`.
 
 ### `ESP32P4_Jpeg`
 
-| Method | Description |
+| Call | Meaning |
 | --- | --- |
-| `begin(max_w, max_h, quality)` | Init HW JPEG |
-| `encode(fb, out, out_cap)` | RGB565 → JPEG bytes |
-| `decode(jpg, len, rgb_out, …)` | JPEG → RGB |
-| `setQuality(q)` | 1–100 |
+| `begin(max_w, max_h, quality)` | Init HW JPEG (quality ~4–63 typical for stream) |
+| `encode(fb\|rgb, …)` | RGB565 → JPEG bytes |
+| `decode(jpg, …)` | JPEG → RGB |
+| `setQuality(q)` | Change quality |
+
+### `ESP32P4_Ppa`
+
+| Call | Meaning |
+| --- | --- |
+| `begin()` | Init PPA |
+| `scale` / `scaleFit` / `scaleCover` | HW resize RGB565 |
+| `rotate90` / `mirror` | Geometry |
+| `rgb565ToGray` / `rgb565ToGrayScale` | HW color convert (+ optional scale) |
 
 ### `ESP32P4_MjpegServer`
 
-| Method | Description |
+| Call | Meaning |
 | --- | --- |
-| `begin(cam, port, quality)` | Start UI on `port`, stream on `port+1` |
-| `loop()` | Keep HTTP tasks happy (call from `loop()`) |
+| `begin(cam, port, quality)` | HTTP UI on `port`, MJPEG on `port+1` |
+| `loop()` | Call from Arduino `loop()` |
 | `setQuality` / `setFrameSkip` / `setFramesize` | Live stream knobs |
-| `streamPort()` / `controlPort()` | Bound ports |
-| `sent()` / `lastJpegBytes()` | Stats |
+| `enableSdCapture(sd, folder)` | UI “Capture → SD” |
+| `enableVideoRecord(sd, h264, folder)` | UI Record / Stop → MP4 |
+| `enableMic(mic)` | Waveform + PCM in MP4 |
+| `setFrameHook(fn, user)` | Annotate RGB565 before JPEG (not the H.264 FB) |
+| `enableCvDashboard(true)` | Built-in CV modes in UI |
+| `enableFaceUi(true)` / `faceUi()` | Face panel state for sketch-driven FR |
+| `setFilesBrowserPort(port)` | Link to WebFileManager |
 
-### Also included
+**Stream framesize (`setFramesize` / `/control?var=framesize`):**
 
-| Header (via umbrella) | Role |
+| Value | Enum | Size |
+| :---: | --- | --- |
+| 0 | `ESP32P4_STREAM_FHD` | 1920×1072 |
+| 1 | `ESP32P4_STREAM_HD` | 1280×720 |
+| 2 | `ESP32P4_STREAM_XGA` | 1024×576 |
+| 3 | `ESP32P4_STREAM_SVGA` | 800×640 |
+| 4 | `ESP32P4_STREAM_VGA` | 640×480 |
+| 5 | `ESP32P4_STREAM_HVGA` | 480×320 |
+| 6 | `ESP32P4_STREAM_CIF` | 400×288 |
+| 7 | `ESP32P4_STREAM_QVGA` | 320×240 |
+| 8 | `ESP32P4_STREAM_HQVGA` | 240×176 |
+| 9 | `ESP32P4_STREAM_QQVGA` | 160×128 |
+
+Face detect/enroll locks stream output to the model size (e.g. 320×240) while active.
+
+### HTTP (camera UI)
+
+| Endpoint | Port | Role |
+| --- | :---: | --- |
+| `GET /` | 80 | Settings UI |
+| `GET /control?var=&val=` | 80 | Change setting |
+| `GET /status` | 80 | JSON status |
+| `GET /capture` / `/jpg` | 80 | One JPEG in browser |
+| `GET /capture_img` | 80 | Save JPEG to SD (`/IMG`) |
+| `GET /stream` | 81 | Multipart MJPEG |
+
+**Common `var` names:**
+
+| `var` | `val` | Meaning |
+| --- | --- | --- |
+| `quality` | 4–63 | JPEG quality |
+| `framesize` | 0–9 | Stream size (table above) |
+| `frameskip` | 0–8 | Skip N frames between encodes |
+| `hmirror` / `vflip` | 0/1 | Mirror / flip |
+| `aec` / `agc` | 0/1 | Auto exposure / gain |
+| `aec_value` | 4–980 | Manual exposure lines (turns AEC off in UI) |
+| `agc_gain` | 0–1023 | Manual gain |
+| `gainceiling` | 16–1023 | Gain ceiling |
+| `colorbar` | 0/1 | Test pattern |
+| `face_detect` / `face_recog` | 0/1 | Face panel |
+| `face_thr` | 10–95 | Match threshold % |
+| `face_enroll` | name | Start enroll |
+| `face_model` | 0/1/2 | MSR+MNP / ESPDet224 / ESPDet416 |
+
+### `ESP32P4_Cv` (imgproc on RGB565 / GRAY8)
+
+| Call | Meaning |
 | --- | --- |
-| `ESP32P4_Ppa` | Hardware scale / rotate / mirror |
-| `ESP32P4_Dsp` | Motion detect on RGB565 |
-| `ESP32P4_Who` | Async WHO-style frame pipeline |
-| `esp32p4_psram_*` | PSRAM alloc helpers |
+| `toGray` / `toGrayScale` | RGB565 → gray (PPA when possible) |
+| `blur3x3` | Box blur |
+| `threshold` / `otsu` / `adaptiveThreshold` | Binarize |
+| `erode` / `dilate` / `morphologyOpen` / `Close` | Morphology |
+| `rgb565ToHsv` / `inRangeHsv` | HSV mask |
+| `edges` | Sobel magnitude + dual threshold |
+| `findBlobs` | Connected components → boxes |
+| `line` / `circle` / `putText` / `drawBlob` | Draw on RGB565 |
+
+### `esp_cv` / `cv` (OpenCV-like core)
+
+```cpp
+#include <ESP32CSI_Vision.h>
+
+esp_cv::Mat m(240, 320, esp_cv::CV_8UC1);          // PSRAM-owned
+esp_cv::Mat view = m(esp_cv::Rect(10, 10, 64, 64)); // ROI (no copy)
+esp_cv::Mat wrap = esp_cv::wrapRgb565(buf, w, h);   // external FB
+
+// Optional aliases: cv::Mat, cv::Point, cv::Rect, …
+```
+
+| Type / call | Meaning |
+| --- | --- |
+| `Mat` | Image header + data (own or wrap) |
+| `create` / `release` / `clone` / `copyTo` | Alloc (PSRAM) / free / deep copy |
+| `operator()(Rect)` / `rowRange` / `colRange` | ROI / submatrix |
+| `Point` `Point2f` `Size` `Rect` `Scalar` `Range` | Geometry |
+| `CV_8UC1` / `CV_8UC2` / `CV_8UC3` | Gray / RGB565 / RGB888 |
+| `wrapRgb565` / `wrapGray` / `wrapRgb888` | Zero-copy headers |
+
+Imgproc on `Mat` is still mostly via `ESP32P4_Cv` + raw pointers; Mat is the buffer/ROI layer.
+
+### `ESP32P4_FaceAi`
+
+| Call | Meaning |
+| --- | --- |
+| `begin(model, db, names)` | Load detector (+ recognizer if MFN present) |
+| `run(rgb\|fb, out, max, recognize)` | Detect; optionally match DB |
+| `requestEnroll(name)` / `cancelEnroll` | Multi-frame enroll → one feature |
+| `clearDb` / `deleteId` / `deleteName` | Manage DB |
+| `setName` / `nameOf` / `rosterText` | Names / UI roster |
+| `setThresh` / `thresh` | Similarity threshold |
+| `draw(...)` | Boxes + labels on RGB565 |
+| `featCount` / `lastEnrollStatus` | Status |
+
+DB paths use VFS (`/sdcard/...`). SD_MMC card paths are `/face/...`.
+
+### `ESP32P4_Sd` / `WebFileManager`
+
+| Call | Meaning |
+| --- | --- |
+| `sd.begin(board\|cfg)` | Mount FAT SD |
+| `wfm.setPorts(ui, file).setHomePort(camUi).begin()` | File browser HTTP |
+| `wfm.startFileTask()` | Keep UI responsive during transfers |
+| `wfm.loop()` | Pump from Arduino `loop()` |
+
+Typical ports: camera `:80`, WFM UI `:82`, WFM transfers `:83`.
+
+### Memory
+
+```cpp
+void *p = esp32p4_psram_alloc(bytes);
+esp32p4_psram_free(p);
+esp32p4_psram_msync(p, bytes);
+size_t free_b = esp32p4_psram_free_size();
+```
 
 ---
 
 ## Examples
 
-| Example | What it teaches |
+| Sketch | What it shows |
 | --- | --- |
-| `01_CamTest` | Capture + PSRAM health |
-| `02_JpegSnapshot` | HW JPEG encode |
-| `03_JpegDecode` | Round-trip decode |
-| `04_WiFiMjpeg` | Full webcam UI + dual-port stream (Wi‑Fi) |
-| `05_MotionDetect` | Frame-difference motion ROI |
-| `06_PpaScale` | PPA resize |
-| `07_WhoPipeline` | Async consumer pipeline |
-| `idf_examples/08_FaceDetect` | ESP-DL faces (**ESP-IDF**, not Arduino IDE) |
-| `09_SdCard` | microSD mount / R-W |
-| `10_WiFiMjpegSdCapture` | Live UI + Capture Img → `/IMG` |
-| `11_H264SdRecord` | HW H.264 → `.mp4` on SD (wall-clock) |
-| `12_WiFiH264Record` | Phone-style Record/Stop → `/VIDEO/*.mp4` |
-| `13_EthernetTest` | Wired Ethernet bring-up (Guition M3) |
-| `14_EthSdBrowser` | Bundled **WebFileManager** explorer over Ethernet + SD (+ optional LittleFS) |
-| `15_MicSdRecord` | Onboard **ES8311 mic** → WAV on microSD (Guition M3) |
-| `16_MicSdWebFileManager` | GPIO1 (or Serial `r`) 10s mic record + bundled **WebFileManager** Ethernet browser |
-| `17_EthH264Record` | Ethernet MJPEG + SD stills + **H.264/MP4 record with mic audio** + waveform UI |
-| `18_EthH264RecordFiles` | Same as 17 + bundled **WebFileManager** (`Files` ↔ `Camera` nav, ports 80/82) |
+| `01_CamTest` | Capture loop |
+| `02_JpegSnapshot` | HW JPEG |
+| `04_WiFiMjpeg` | Wi‑Fi MJPEG UI |
+| `09_SdCard` | SD mount |
+| `10_WiFiMjpegSdCapture` | Capture → `/IMG` |
+| `11`–`12` H264 | Record MP4 |
+| `14_EthSdBrowser` | WebFileManager |
+| `17` / `18_EthH264Record*` | Eth + record + mic (+ files) |
+| `19_CvColorBlobs` / `20_EthCvPreview` | HSV blobs / live CV |
+| `21_EthFaceWeb` | Eth + face + settings on SD + capture/record + WFM |
 
-Open Arduino examples via:
-
-**File → Examples → ESP32CSI_Vision → …**
+Arduino IDE: **File → Examples → ESP32CSI_Vision → …**
 
 ---
 
-## ESP-IDF face detect
-
-Arduino IDE **cannot** link ESP-DL / `human_face_detect` from the prebuilt Arduino-ESP32 SDK.
-
-Use the IDF project:
+## Layout
 
 ```text
-libraries/ESP32CSI_Vision/idf_examples/08_FaceDetect
-```
-
-```bat
-idf.py -DSDKCONFIG_DEFAULTS=sdkconfig.defaults.esp32p4 set-target esp32p4
-idf.py -p COMx build flash monitor
-```
-
-See `idf_examples/08_FaceDetect/README.md` for models (`MSRMNP_S8_V1`, ESPDet Pico, …).
-
----
-
-## Arduino IDE board settings
-
-Typical Guition JC-ESP32P4-M3:
-
-| Setting | Value |
-| --- | --- |
-| Board | ESP32P4 Dev Module (or your vendor board) |
-| **PSRAM** | **Enabled** |
-| Flash Size | 16MB (if your board has 16MB) |
-| USB Mode | Default / as required by your cable |
-| CDC On Boot | Default / Enabled if using USB serial |
-| Upload Speed | 921600 (or slower if flaky) |
-
-FQBN-style example:
-
-```text
-esp32:esp32:esp32p4:PSRAM=enabled,FlashSize=16M,USBMode=default,CDCOnBoot=default
+src/
+  ESP32CSI_Vision.h     ← umbrella include
+  cam/ jpeg/ ppa/ dsp/  ← capture / encode / scale / motion
+  stream/               ← MJPEG + UI
+  cv/ opencv/           ← imgproc + Mat core
+  face/ espdl/          ← Face AI + vendored ESP-DL
+  h264/ audio/ sd/      ← record / mic / storage
+  wfm/                  ← WebFileManager
+examples/               ← Arduino sketches
 ```
 
 ---
 
-## Troubleshooting
+## Notes
 
-| Symptom | Likely fix |
-| --- | --- |
-| `camera begin FAILED` | Wrong board preset / CSI flex not seated / sensor power (LDO) |
-| `capture timeout` | Sensor not streaming; try test pattern; check I²C address in Serial |
-| Compile: not ESP32-P4 | Select an ESP32-P4 board (current CSI backend) |
-| Out of memory / JPEG fail | Enable **PSRAM**; reduce `fb_count` or stream framesize |
-| Wi‑Fi never connects | Guition: set C6 SDIO pins; SoftAP fallback prints in Serial |
-| Settings UI “network error” while watching stream | Use UI on **:80** and stream on **:81** (library default) |
-| COM port busy on Windows | Close Serial Monitor / other apps using the port |
-| Face detect won’t build in Arduino | Expected — use `idf_examples/08_FaceDetect` |
-
-Enable verbose compile (**File → Preferences → Show verbose output**) if an include path looks wrong.
-
----
-
-## Compatibility headers
-
-Prefer the new umbrella header:
-
-```cpp
-#include <ESP32CSI_Vision.h>
-```
-
-Still work (shim / old sketches):
-
-```cpp
-#include <ESP32P4_Vision.h>
-#include <ESP32P4_Cam.h>
-#include <ESP32P4_CSI_Camera.h>
-```
-
-Class names such as `ESP32P4_Camera` remain for API stability while the **library brand** stays CSI-oriented.
-
----
-
-## Project layout
-
-```text
-ESP32CSI_Vision/
-├── src/
-│   ├── ESP32CSI_Vision.h      ← include this
-│   ├── cam/                   ← CSI capture
-│   ├── jpeg/  ppa/  dsp/      ← encode / scale / motion
-│   ├── stream/                ← MJPEG + UI
-│   └── who/                   ← async pipeline
-├── examples/                  ← Arduino IDE sketches
-├── idf_src/                   ← face detect (IDF builds)
-├── idf_examples/08_FaceDetect
-├── docs/images/               ← README assets
-├── library.properties
-└── README.md
-```
-
----
-
-## Contributing / repo
-
-- **Issues / PRs:** [github.com/thezerohz/ESP32CSI_Vision](https://github.com/thezerohz/ESP32CSI_Vision)
-- **Changelog:** [CHANGELOG.md](CHANGELOG.md)
+- Always `cam.release(fb)` after `capture()`.
+- Keep MJPEG on `:81` so `/control` on `:80` stays responsive.
+- Avoid heavy SD browse/upload while recording.
+- Face models must be on SD before `FaceAi.begin()`; WFM can upload them.
+- Class prefix stays `ESP32P4_*` for API stability; library name is CSI-oriented.
 
 ---
 
 ## License
 
-MIT — Copyright (c) 2026 Rakib Hasan ([@thezerohz](https://github.com/thezerohz)).
+MIT · [Rakib Hasan](https://github.com/thezerohz) ([@thezerohz](https://github.com/thezerohz)) · [repo](https://github.com/thezerohz/ESP32CSI_Vision)
