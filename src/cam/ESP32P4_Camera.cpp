@@ -3,8 +3,7 @@
 #include <Wire.h>
 #include <string.h>
 
-#include "cam/sensors/imx708_sensor.h"
-#include "cam/sensors/ov5647_sensor.h"
+#include "cam/esp32p4_cam_sensor_ops.h"
 #include "driver/isp.h"
 #include "driver/isp_demosaic.h"
 #include "driver/ledc.h"
@@ -20,11 +19,98 @@
 
 static SemaphoreHandle_t s_frame_sem = nullptr;
 static esp_cam_ctlr_trans_t s_trans[ESP32P4_CAM_FB_MAX]{};
-static volatile int s_write_idx = 0;
-static volatile int s_done_idx = 0;
+static uint8_t *s_fb_ptr[ESP32P4_CAM_FB_MAX]{};
+static volatile uint8_t s_fb_state[ESP32P4_CAM_FB_MAX]{};  // 0=free 1=csi 2=ready 3=held
+static volatile int s_ready_q[ESP32P4_CAM_FB_MAX]{};
+static volatile int s_ready_r = 0;
+static volatile int s_ready_w = 0;
+static volatile int s_ready_n = 0;
 static volatile uint32_t s_new_trans_count = 0;
 static volatile uint32_t s_done_count = 0;
+static volatile uint32_t s_drop_count = 0;
 static uint8_t s_fb_n = 1;
+
+enum : uint8_t { FB_FREE = 0, FB_CSI = 1, FB_READY = 2, FB_HELD = 3 };
+
+static int IRAM_ATTR fb_index_from_buf(const void *buf) {
+  for (uint8_t i = 0; i < s_fb_n; i++) {
+    if (s_fb_ptr[i] == buf) return (int)i;
+  }
+  return -1;
+}
+
+static bool IRAM_ATTR ready_push(int idx) {
+  if (s_ready_n >= (int)s_fb_n) return false;
+  s_ready_q[s_ready_w] = idx;
+  s_ready_w = (s_ready_w + 1) % (s_fb_n ? s_fb_n : 1);
+  s_ready_n++;
+  return true;
+}
+
+static int IRAM_ATTR ready_pop(void) {
+  if (s_ready_n <= 0) return -1;
+  int idx = s_ready_q[s_ready_r];
+  s_ready_r = (s_ready_r + 1) % (s_fb_n ? s_fb_n : 1);
+  s_ready_n--;
+  return idx;
+}
+
+static bool IRAM_ATTR on_get_new_trans(esp_cam_ctlr_handle_t, esp_cam_ctlr_trans_t *trans, void *) {
+  s_new_trans_count++;
+  // Prefer a free buffer so CSI never writes into a frame the app is still using.
+  for (uint8_t i = 0; i < s_fb_n; i++) {
+    if (s_fb_state[i] == FB_FREE) {
+      s_fb_state[i] = FB_CSI;
+      *trans = s_trans[i];
+      return false;
+    }
+  }
+  // All buffers busy (app slower than sensor): drop oldest ready frame and reuse it.
+  if (s_ready_n > 0) {
+    int idx = ready_pop();
+    if (idx >= 0 && idx < (int)s_fb_n) {
+      s_drop_count++;
+      s_fb_state[idx] = FB_CSI;
+      *trans = s_trans[idx];
+      return false;
+    }
+  }
+  // Last resort: overwrite an in-flight CSI slot (should be rare with 3 FBs).
+  for (uint8_t i = 0; i < s_fb_n; i++) {
+    if (s_fb_state[i] == FB_CSI) {
+      s_drop_count++;
+      *trans = s_trans[i];
+      return false;
+    }
+  }
+  *trans = s_trans[0];
+  s_drop_count++;
+  return false;
+}
+
+static bool IRAM_ATTR on_trans_finished(esp_cam_ctlr_handle_t, esp_cam_ctlr_trans_t *trans, void *) {
+  s_done_count++;
+  int idx = trans ? fb_index_from_buf(trans->buffer) : -1;
+  if (idx < 0 || idx >= (int)s_fb_n) {
+    BaseType_t woken = pdFALSE;
+    if (s_frame_sem) xSemaphoreGiveFromISR(s_frame_sem, &woken);
+    return woken == pdTRUE;
+  }
+  // If app never drained ready queue, drop this frame back to free instead of growing backlog.
+  if (s_ready_n >= (int)s_fb_n - 1) {
+    // Keep at most one ready frame waiting; drop older by replacing.
+    int old = ready_pop();
+    if (old >= 0 && old < (int)s_fb_n) {
+      s_fb_state[old] = FB_FREE;
+      s_drop_count++;
+    }
+  }
+  s_fb_state[idx] = FB_READY;
+  ready_push(idx);
+  BaseType_t woken = pdFALSE;
+  if (s_frame_sem) xSemaphoreGiveFromISR(s_frame_sem, &woken);
+  return woken == pdTRUE;
+}
 
 static bool start_xclk_gpio(int gpio, uint32_t hz) {
   ledc_timer_config_t timer = {};
@@ -51,21 +137,6 @@ static bool start_xclk_gpio(int gpio, uint32_t hz) {
   return true;
 }
 
-static bool IRAM_ATTR on_get_new_trans(esp_cam_ctlr_handle_t, esp_cam_ctlr_trans_t *trans, void *) {
-  s_new_trans_count++;
-  *trans = s_trans[s_write_idx];
-  return false;
-}
-
-static bool IRAM_ATTR on_trans_finished(esp_cam_ctlr_handle_t, esp_cam_ctlr_trans_t *, void *) {
-  s_done_count++;
-  s_done_idx = s_write_idx;
-  s_write_idx = (s_write_idx + 1) % (s_fb_n ? s_fb_n : 1);
-  BaseType_t woken = pdFALSE;
-  if (s_frame_sem) xSemaphoreGiveFromISR(s_frame_sem, &woken);
-  return woken == pdTRUE;
-}
-
 esp32p4_cam_config_t esp32p4_cam_config_default() {
   return esp32p4_cam_config_board(ESP32P4_BOARD_GUITION_M3);
 }
@@ -81,22 +152,40 @@ esp32p4_cam_config_t esp32p4_cam_config_board(esp32p4_board_t board) {
   c.i2c_addr = 0;
   c.ldo_chan = 3;
   c.ldo_mv = 2500;
-  c.frame_size = ESP32P4_FRAMESIZE_800X640;
+  c.frame_size = ESP32P4_FRAMESIZE_AUTO;
   c.pixel_format = ESP32P4_PIXFORMAT_RGB565;
-  c.lane_bit_rate_mbps = 200;
-  c.sensor = ESP32P4_SENSOR_OV5647;
+  c.lane_bit_rate_mbps = 0;  // auto from mode
+  c.sensor = ESP32P4_SENSOR_AUTO;
   c.test_pattern = false;
-  c.fb_count = 2;
-  (void)board;
+  c.fb_count = 3;  // 1 held by app + 1 CSI + 1 spare (prevents mid-frame tear)
+
+  switch (board) {
+    case ESP32P4_BOARD_FUNCTION_EV:
+      // Espressif ESP32-P4-Function-EV-Board CSI (SC2336 typical)
+      c.sda = 7;
+      c.scl = 8;
+      c.xclk = -1;  // often module crystal; set GPIO if your carrier needs SoC MCLK
+      c.pwdn = -1;
+      c.reset = -1;
+      break;
+    case ESP32P4_BOARD_WAVESHARE_NANO:
+      // Waveshare ESP32-P4-Nano CSI (OV5647 module common)
+      c.sda = 7;
+      c.scl = 8;
+      c.xclk = -1;
+      break;
+    case ESP32P4_BOARD_GUITION_M3:
+    case ESP32P4_BOARD_CUSTOM:
+    default:
+      break;
+  }
   return c;
 }
 
 const char *ESP32P4_Camera::sensorName() const {
-  switch (_sensor) {
-    case ESP32P4_SENSOR_OV5647: return "OV5647 (OV CSI)";
-    case ESP32P4_SENSOR_IMX708: return "IMX708 (Pi Cam 3)";
-    default: return "unknown";
-  }
+  auto *ops = (const esp32p4_cam_sensor_ops_t *)_ops;
+  if (ops && ops->name) return ops->name;
+  return "unknown";
 }
 
 uint32_t ESP32P4_Camera::newTransCount() const { return s_new_trans_count; }
@@ -105,25 +194,21 @@ bool ESP32P4_Camera::psramOk() const { return esp32p4_psram_available(); }
 
 bool ESP32P4_Camera::probe_sensor() {
   uint8_t a = 0;
-  if (_cfg.sensor != ESP32P4_SENSOR_IMX708) {
-    if (ov5647_detect(&a)) {
-      _addr = a;
-      _sensor = ESP32P4_SENSOR_OV5647;
-      return true;
-    }
+  const esp32p4_cam_sensor_ops_t *ops = esp32p4_cam_sensor_probe(_cfg.sensor, &a);
+  if (!ops) return false;
+  if (ops->support == ESP32P4_CAM_SUPPORT_DETECT_ONLY) {
+    Serial.printf("CSI: %s detected but no mode table yet (DETECT_ONLY)\n", ops->name);
+    return false;
   }
-  if (_cfg.sensor != ESP32P4_SENSOR_OV5647) {
-    if (imx708_detect(&a)) {
-      _addr = a;
-      _sensor = ESP32P4_SENSOR_IMX708;
-      return true;
-    }
-  }
-  return false;
+  _ops = ops;
+  _addr = a;
+  _sensor = ops->id;
+  return true;
 }
 
 bool ESP32P4_Camera::init_sensor() {
   _sensor = ESP32P4_SENSOR_AUTO;
+  _ops = nullptr;
   if (_cfg.pwdn >= 0) {
     pinMode(_cfg.pwdn, OUTPUT);
     digitalWrite(_cfg.pwdn, LOW);
@@ -145,7 +230,8 @@ bool ESP32P4_Camera::init_sensor() {
   Wire.setClock(100000);
   delay(20);
 
-  Serial.printf("CSI: I2C scan SDA=%d SCL=%d\n", _cfg.sda, _cfg.scl);
+  Serial.printf("CSI: I2C scan SDA=%d SCL=%d  registry=%u sensors\n", _cfg.sda, _cfg.scl,
+                (unsigned)esp32p4_cam_sensor_registry_count());
   int found = 0;
   for (int a = 1; a < 127; a++) {
     Wire.beginTransmission(a);
@@ -157,31 +243,28 @@ bool ESP32P4_Camera::init_sensor() {
   if (!found) Serial.println("  (no devices — check CSI ribbon)");
 
   if (!probe_sensor()) {
-    Serial.println("CSI: no OV5647 (0x36) or IMX708 (0x1A) detected");
+    Serial.println("CSI: no supported MIPI sensor with a usable mode");
     return false;
   }
-  Serial.printf("CSI: %s @ 0x%02X\n", sensorName(), _addr);
 
-  bool ok = false;
-  if (_sensor == ESP32P4_SENSOR_OV5647) {
-    _w = 800;
-    _h = 640;
-    _raw8 = true;
-    _cfg.pixel_format = ESP32P4_PIXFORMAT_RGB565;
-    if (_cfg.lane_bit_rate_mbps <= 0) _cfg.lane_bit_rate_mbps = 200;
-    ok = ov5647_configure_800x640_raw8((uint8_t)_addr);
-  } else if (_cfg.frame_size == ESP32P4_FRAMESIZE_2304X1296) {
-    _w = 2304;
-    _h = 1296;
-    _raw8 = false;
-    ok = imx708_configure_2304x1296((uint8_t)_addr);
-  } else {
-    _w = 1280;
-    _h = 720;
-    _raw8 = false;
-    ok = imx708_configure_hd720((uint8_t)_addr);
+  auto *ops = (const esp32p4_cam_sensor_ops_t *)_ops;
+  esp32p4_cam_mode_t mode{};
+  if (!ops->configure || !ops->configure((uint8_t)_addr, _cfg.frame_size, &mode)) {
+    Serial.printf("CSI: %s configure failed\n", ops->name);
+    return false;
   }
-  return ok;
+  _w = mode.width;
+  _h = mode.height;
+  _lanes = mode.lanes ? mode.lanes : 2;
+  _bayer = (uint8_t)mode.bayer;
+  _raw8 = (mode.in_fmt == ESP32P4_CAM_IN_RAW8);
+  _use_isp = (mode.in_fmt == ESP32P4_CAM_IN_RAW8 || mode.in_fmt == ESP32P4_CAM_IN_RAW10);
+  if (_cfg.lane_bit_rate_mbps <= 0) _cfg.lane_bit_rate_mbps = mode.lane_mbps > 0 ? mode.lane_mbps : 400;
+  _cfg.pixel_format = ESP32P4_PIXFORMAT_RGB565;
+  Serial.printf("CSI: %s mode %s  %ux%u  lanes=%u  %d Mbps/lane  isp=%d\n", ops->name,
+                mode.name ? mode.name : "?", _w, _h, (unsigned)_lanes, _cfg.lane_bit_rate_mbps,
+                _use_isp ? 1 : 0);
+  return true;
 }
 
 bool ESP32P4_Camera::init_mipi_ldo() {
@@ -199,7 +282,7 @@ bool ESP32P4_Camera::init_mipi_ldo() {
 
 bool ESP32P4_Camera::alloc_fbs() {
   _fb_n = _cfg.fb_count;
-  if (_fb_n < 1) _fb_n = 1;
+  if (_fb_n < 2) _fb_n = 2;
   if (_fb_n > ESP32P4_CAM_FB_MAX) _fb_n = ESP32P4_CAM_FB_MAX;
   _fb_cap = (size_t)_w * (size_t)_h * 2;
   for (uint8_t i = 0; i < _fb_n; i++) {
@@ -217,22 +300,43 @@ bool ESP32P4_Camera::alloc_fbs() {
     _fb[i].timestamp_us = 0;
     s_trans[i].buffer = buf;
     s_trans[i].buflen = _fb_cap;
+    s_fb_ptr[i] = buf;
+    s_fb_state[i] = FB_FREE;
+  }
+  for (uint8_t i = _fb_n; i < ESP32P4_CAM_FB_MAX; i++) {
+    s_fb_ptr[i] = nullptr;
+    s_fb_state[i] = FB_FREE;
+    s_trans[i] = {};
   }
   s_fb_n = _fb_n;
-  s_write_idx = 0;
-  s_done_idx = 0;
+  s_ready_r = 0;
+  s_ready_w = 0;
+  s_ready_n = 0;
+  s_drop_count = 0;
   Serial.printf("CSI: %u PSRAM framebuffers x %u bytes (PSRAM free=%u)\n", _fb_n, (unsigned)_fb_cap,
                 (unsigned)esp32p4_psram_free_size());
   return true;
 }
 
+static color_raw_element_order_t bayer_to_idf(uint8_t b) {
+  switch ((esp32p4_cam_bayer_t)b) {
+    case ESP32P4_BAYER_GRBG: return COLOR_RAW_ELEMENT_ORDER_GRBG;
+    case ESP32P4_BAYER_GBRG: return COLOR_RAW_ELEMENT_ORDER_GBRG;
+    case ESP32P4_BAYER_BGGR: return COLOR_RAW_ELEMENT_ORDER_BGGR;
+    case ESP32P4_BAYER_RGGB:
+    default: return COLOR_RAW_ELEMENT_ORDER_RGGB;
+  }
+}
+
 bool ESP32P4_Camera::init_csi_isp() {
   const int bitrate = _cfg.lane_bit_rate_mbps > 0 ? _cfg.lane_bit_rate_mbps : 200;
-  const bool rgb = (_cfg.pixel_format == ESP32P4_PIXFORMAT_RGB565);
+  const uint8_t lanes = _lanes ? _lanes : 2;
+  const bool sensor_rgb565 = !_use_isp;  // sensor already outputs RGB565
 
-  if (rgb) {
+  if (_use_isp && _cfg.pixel_format == ESP32P4_PIXFORMAT_RGB565) {
     esp_isp_processor_cfg_t isp_cfg = {};
-    isp_cfg.clk_hz = 80 * 1000 * 1000;
+    // Higher ISP clock needed for 1080p RAW10 demosaic; 80 MHz overflows.
+    isp_cfg.clk_hz = (_w >= 1600) ? (160 * 1000 * 1000) : (80 * 1000 * 1000);
     isp_cfg.input_data_source = ISP_INPUT_DATA_SOURCE_CSI;
     isp_cfg.input_data_color_type = _raw8 ? ISP_COLOR_RAW8 : ISP_COLOR_RAW10;
     isp_cfg.output_data_color_type = ISP_COLOR_RGB565;
@@ -240,8 +344,7 @@ bool ESP32P4_Camera::init_csi_isp() {
     isp_cfg.has_line_end_packet = false;
     isp_cfg.h_res = _w;
     isp_cfg.v_res = _h;
-    isp_cfg.bayer_order = (_sensor == ESP32P4_SENSOR_OV5647) ? COLOR_RAW_ELEMENT_ORDER_GBRG
-                                                             : COLOR_RAW_ELEMENT_ORDER_RGGB;
+    isp_cfg.bayer_order = bayer_to_idf(_bayer);
     isp_proc_handle_t isp = nullptr;
     if (esp_isp_new_processor(&isp_cfg, &isp) != ESP_OK) return false;
     if (esp_isp_enable(isp) != ESP_OK) return false;
@@ -250,18 +353,24 @@ bool ESP32P4_Camera::init_csi_isp() {
     if (esp_isp_demosaic_configure(isp, &demosaic) != ESP_OK) return false;
     if (esp_isp_demosaic_enable(isp) != ESP_OK) return false;
     _isp = isp;
-    Serial.println("CSI: ISP RAW->RGB565 + demosaic");
+    Serial.printf("CSI: ISP RAW->RGB565 + demosaic (clk=%u MHz bayer=%u)\n",
+                  (unsigned)(isp_cfg.clk_hz / 1000000), (unsigned)_bayer);
   }
 
   esp_cam_ctlr_csi_config_t csi_cfg = {};
   csi_cfg.ctlr_id = 0;
   csi_cfg.h_res = _w;
   csi_cfg.v_res = _h;
-  csi_cfg.data_lane_num = 2;
+  csi_cfg.data_lane_num = lanes;
   csi_cfg.lane_bit_rate_mbps = bitrate;
-  csi_cfg.input_data_color_type = _raw8 ? CAM_CTLR_COLOR_RAW8 : CAM_CTLR_COLOR_RAW10;
-  csi_cfg.output_data_color_type = _raw8 ? CAM_CTLR_COLOR_RAW8 : CAM_CTLR_COLOR_RAW10;
-  csi_cfg.queue_items = 1;
+  if (sensor_rgb565) {
+    csi_cfg.input_data_color_type = CAM_CTLR_COLOR_RGB565;
+    csi_cfg.output_data_color_type = CAM_CTLR_COLOR_RGB565;
+  } else {
+    csi_cfg.input_data_color_type = _raw8 ? CAM_CTLR_COLOR_RAW8 : CAM_CTLR_COLOR_RAW10;
+    csi_cfg.output_data_color_type = _raw8 ? CAM_CTLR_COLOR_RAW8 : CAM_CTLR_COLOR_RAW10;
+  }
+  csi_cfg.queue_items = (_w >= 1600) ? 2 : 1;
   csi_cfg.byte_swap_en = false;
 
   esp_cam_ctlr_handle_t cam = nullptr;
@@ -275,20 +384,20 @@ bool ESP32P4_Camera::init_csi_isp() {
   if (esp_cam_ctlr_enable(cam) != ESP_OK) return false;
   if (esp_cam_ctlr_start(cam) != ESP_OK) return false;
   _started = true;
-  Serial.printf("CSI: controller started %ux%u @ %d Mbps/lane\n", _w, _h, bitrate);
+  Serial.printf("CSI: controller started %ux%u  %u-lane @ %d Mbps/lane\n", _w, _h, (unsigned)lanes,
+                bitrate);
   return true;
 }
 
 bool ESP32P4_Camera::start_sensor_stream() {
-  if (_sensor == ESP32P4_SENSOR_OV5647) {
-    if (!ov5647_stream_restart((uint8_t)_addr)) return false;
-    if (_cfg.test_pattern) ov5647_set_test_pattern((uint8_t)_addr, true);
-    delay(200);
-    ov5647_dump_key_regs((uint8_t)_addr);
-    delay(400);
-    return true;
+  auto *ops = (const esp32p4_cam_sensor_ops_t *)_ops;
+  if (!ops || !ops->stream_on) return false;
+  if (!ops->stream_on((uint8_t)_addr)) return false;
+  if (_cfg.test_pattern && ops->set_test_pattern) {
+    ops->set_test_pattern((uint8_t)_addr, true);
   }
-  return imx708_stream_on((uint8_t)_addr);
+  delay(200);
+  return true;
 }
 
 bool ESP32P4_Camera::begin(esp32p4_board_t board) { return begin(esp32p4_cam_config_board(board)); }
@@ -307,7 +416,17 @@ bool ESP32P4_Camera::begin(const esp32p4_cam_config_t &cfg) {
                 (unsigned)esp32p4_psram_free_size());
   if (!init_mipi_ldo()) return false;
   if (!init_sensor()) return false;
-  if (!alloc_fbs()) return false;
+  if (!alloc_fbs()) {
+    // 1080p may be too large — fall back to 800x640 once.
+    if (_sensor == ESP32P4_SENSOR_OV5647 && _w >= 1920) {
+      Serial.println("CSI: FB alloc failed at 1080p — retry 800x640");
+      end();
+      _cfg.frame_size = ESP32P4_FRAMESIZE_800X640;
+      _cfg.lane_bit_rate_mbps = 200;
+      return begin(_cfg);
+    }
+    return false;
+  }
   if (!init_csi_isp()) return false;
   if (!start_sensor_stream()) return false;
   Serial.printf("CSI: streaming %ux%u RGB565\n", _w, _h);
@@ -341,26 +460,52 @@ void ESP32P4_Camera::end() {
 
 camera_fb_t *ESP32P4_Camera::capture(uint32_t timeout_ms) {
   if (!_cam || !s_frame_sem || !_fb_n) return nullptr;
-  if (xSemaphoreTake(s_frame_sem, pdMS_TO_TICKS(timeout_ms)) != pdTRUE) return nullptr;
-  int idx = s_done_idx;
-  if (idx < 0 || idx >= _fb_n) return nullptr;
-  esp32p4_psram_msync(_fb[idx].buf, _fb_cap);
-  _fb[idx].len = _fb_cap;
-  _fb[idx].timestamp_us = (uint32_t)esp_timer_get_time();
-  return &_fb[idx];
+  const uint32_t t0 = millis();
+  while ((millis() - t0) < timeout_ms) {
+    uint32_t left = timeout_ms - (millis() - t0);
+    if (!left) left = 1;
+    if (xSemaphoreTake(s_frame_sem, pdMS_TO_TICKS(left)) != pdTRUE) return nullptr;
+
+    portDISABLE_INTERRUPTS();
+    int idx = ready_pop();
+    if (idx >= 0 && idx < (int)_fb_n) s_fb_state[idx] = FB_HELD;
+    portENABLE_INTERRUPTS();
+
+    // Semaphore can fire for a frame that was later dropped — retry.
+    if (idx < 0 || idx >= (int)_fb_n) continue;
+
+    esp32p4_psram_msync(_fb[idx].buf, _fb_cap);
+    _fb[idx].len = _fb_cap;
+    _fb[idx].timestamp_us = (uint32_t)esp_timer_get_time();
+    return &_fb[idx];
+  }
+  return nullptr;
 }
 
-void ESP32P4_Camera::release(camera_fb_t *) {}
+void ESP32P4_Camera::release(camera_fb_t *fb) {
+  if (!fb || !fb->buf || !_fb_n) return;
+  int idx = -1;
+  for (uint8_t i = 0; i < _fb_n; i++) {
+    if (_fb[i].buf == fb->buf) {
+      idx = (int)i;
+      break;
+    }
+  }
+  if (idx < 0) return;
+  portDISABLE_INTERRUPTS();
+  if (s_fb_state[idx] == FB_HELD) s_fb_state[idx] = FB_FREE;
+  portENABLE_INTERRUPTS();
+}
 
 bool ESP32P4_Camera::setTestPattern(bool enable) {
-  if (_sensor != ESP32P4_SENSOR_OV5647 || _addr <= 0) return false;
+  auto *ops = (const esp32p4_cam_sensor_ops_t *)_ops;
+  if (!ops || !ops->set_test_pattern || _addr <= 0) return false;
   _cfg.test_pattern = enable;
-  return ov5647_set_test_pattern((uint8_t)_addr, enable);
+  return ops->set_test_pattern((uint8_t)_addr, enable);
 }
 
 bool ESP32P4_Camera::sync_isp_bayer_for_flip() {
-  // Sensor-level flip (0x3820/21 bit1) rotates the Bayer mosaic. ISP must follow
-  // or demosaic paints false color / "effect" looks. Matches Linux ov5647_get_mbus_code.
+  // OV5647: sensor flip rotates Bayer; ISP must follow (Linux ov5647_get_mbus_code).
   if (!_isp || _sensor != ESP32P4_SENSOR_OV5647) return true;
   bool hm = false, vf = false;
   if (!getHMirror(&hm) || !getVFlip(&vf)) return false;
@@ -376,77 +521,90 @@ bool ESP32P4_Camera::sync_isp_bayer_for_flip() {
 }
 
 bool ESP32P4_Camera::setHMirror(bool enable) {
-  if (_sensor != ESP32P4_SENSOR_OV5647 || _addr <= 0) return false;
-  if (!ov5647_set_hmirror((uint8_t)_addr, enable)) return false;
+  auto *ops = (const esp32p4_cam_sensor_ops_t *)_ops;
+  if (!ops || !ops->set_hmirror || _addr <= 0) return false;
+  if (!ops->set_hmirror((uint8_t)_addr, enable)) return false;
   return sync_isp_bayer_for_flip();
 }
 
 bool ESP32P4_Camera::setVFlip(bool enable) {
-  if (_sensor != ESP32P4_SENSOR_OV5647 || _addr <= 0) return false;
-  if (!ov5647_set_vflip((uint8_t)_addr, enable)) return false;
+  auto *ops = (const esp32p4_cam_sensor_ops_t *)_ops;
+  if (!ops || !ops->set_vflip || _addr <= 0) return false;
+  if (!ops->set_vflip((uint8_t)_addr, enable)) return false;
   return sync_isp_bayer_for_flip();
 }
 
 bool ESP32P4_Camera::setAEC(bool enable) {
-  if (_sensor != ESP32P4_SENSOR_OV5647 || _addr <= 0) return false;
-  return ov5647_set_aec((uint8_t)_addr, enable);
+  auto *ops = (const esp32p4_cam_sensor_ops_t *)_ops;
+  if (!ops || !ops->set_aec || _addr <= 0) return false;
+  return ops->set_aec((uint8_t)_addr, enable);
 }
 
 bool ESP32P4_Camera::setAGC(bool enable) {
-  if (_sensor != ESP32P4_SENSOR_OV5647 || _addr <= 0) return false;
-  return ov5647_set_agc((uint8_t)_addr, enable);
+  auto *ops = (const esp32p4_cam_sensor_ops_t *)_ops;
+  if (!ops || !ops->set_agc || _addr <= 0) return false;
+  return ops->set_agc((uint8_t)_addr, enable);
 }
 
 bool ESP32P4_Camera::setExposure(uint16_t lines) {
-  if (_sensor != ESP32P4_SENSOR_OV5647 || _addr <= 0) return false;
-  // Manual exposure is ignored while AEC is still auto — force manual first.
-  if (!ov5647_set_aec((uint8_t)_addr, false)) return false;
-  return ov5647_set_exposure((uint8_t)_addr, lines);
+  auto *ops = (const esp32p4_cam_sensor_ops_t *)_ops;
+  if (!ops || !ops->set_exposure || _addr <= 0) return false;
+  if (ops->set_aec && !ops->set_aec((uint8_t)_addr, false)) return false;
+  return ops->set_exposure((uint8_t)_addr, lines);
 }
 
 bool ESP32P4_Camera::setGain(uint16_t gain) {
-  if (_sensor != ESP32P4_SENSOR_OV5647 || _addr <= 0) return false;
-  if (!ov5647_set_agc((uint8_t)_addr, false)) return false;
-  return ov5647_set_gain((uint8_t)_addr, gain);
+  auto *ops = (const esp32p4_cam_sensor_ops_t *)_ops;
+  if (!ops || !ops->set_gain || _addr <= 0) return false;
+  if (ops->set_agc && !ops->set_agc((uint8_t)_addr, false)) return false;
+  return ops->set_gain((uint8_t)_addr, gain);
 }
 
 bool ESP32P4_Camera::setGainCeiling(uint16_t ceiling) {
-  if (_sensor != ESP32P4_SENSOR_OV5647 || _addr <= 0) return false;
-  return ov5647_set_gainceiling((uint8_t)_addr, ceiling);
+  auto *ops = (const esp32p4_cam_sensor_ops_t *)_ops;
+  if (!ops || !ops->set_gainceiling || _addr <= 0) return false;
+  return ops->set_gainceiling((uint8_t)_addr, ceiling);
 }
 
 bool ESP32P4_Camera::getHMirror(bool *out) const {
-  if (_sensor != ESP32P4_SENSOR_OV5647 || _addr <= 0) return false;
-  return ov5647_get_hmirror((uint8_t)_addr, out);
+  auto *ops = (const esp32p4_cam_sensor_ops_t *)_ops;
+  if (!ops || !ops->get_hmirror || _addr <= 0) return false;
+  return ops->get_hmirror((uint8_t)_addr, out);
 }
 
 bool ESP32P4_Camera::getVFlip(bool *out) const {
-  if (_sensor != ESP32P4_SENSOR_OV5647 || _addr <= 0) return false;
-  return ov5647_get_vflip((uint8_t)_addr, out);
+  auto *ops = (const esp32p4_cam_sensor_ops_t *)_ops;
+  if (!ops || !ops->get_vflip || _addr <= 0) return false;
+  return ops->get_vflip((uint8_t)_addr, out);
 }
 
 bool ESP32P4_Camera::getAEC(bool *out) const {
-  if (_sensor != ESP32P4_SENSOR_OV5647 || _addr <= 0) return false;
-  return ov5647_get_aec((uint8_t)_addr, out);
+  auto *ops = (const esp32p4_cam_sensor_ops_t *)_ops;
+  if (!ops || !ops->get_aec || _addr <= 0) return false;
+  return ops->get_aec((uint8_t)_addr, out);
 }
 
 bool ESP32P4_Camera::getAGC(bool *out) const {
-  if (_sensor != ESP32P4_SENSOR_OV5647 || _addr <= 0) return false;
-  return ov5647_get_agc((uint8_t)_addr, out);
+  auto *ops = (const esp32p4_cam_sensor_ops_t *)_ops;
+  if (!ops || !ops->get_agc || _addr <= 0) return false;
+  return ops->get_agc((uint8_t)_addr, out);
 }
 
 bool ESP32P4_Camera::getExposure(uint16_t *lines) const {
-  if (_sensor != ESP32P4_SENSOR_OV5647 || _addr <= 0) return false;
-  return ov5647_get_exposure((uint8_t)_addr, lines);
+  auto *ops = (const esp32p4_cam_sensor_ops_t *)_ops;
+  if (!ops || !ops->get_exposure || _addr <= 0) return false;
+  return ops->get_exposure((uint8_t)_addr, lines);
 }
 
 bool ESP32P4_Camera::getGain(uint16_t *gain) const {
-  if (_sensor != ESP32P4_SENSOR_OV5647 || _addr <= 0) return false;
-  return ov5647_get_gain((uint8_t)_addr, gain);
+  auto *ops = (const esp32p4_cam_sensor_ops_t *)_ops;
+  if (!ops || !ops->get_gain || _addr <= 0) return false;
+  return ops->get_gain((uint8_t)_addr, gain);
 }
 
 bool ESP32P4_Camera::getGainCeiling(uint16_t *ceiling) const {
-  if (_sensor != ESP32P4_SENSOR_OV5647 || _addr <= 0) return false;
-  return ov5647_get_gainceiling((uint8_t)_addr, ceiling);
+  auto *ops = (const esp32p4_cam_sensor_ops_t *)_ops;
+  if (!ops || !ops->get_gainceiling || _addr <= 0) return false;
+  return ops->get_gainceiling((uint8_t)_addr, ceiling);
 }
 

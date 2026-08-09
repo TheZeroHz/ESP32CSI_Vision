@@ -9,6 +9,8 @@ extern "C" {
 
 bool ov5647_detect(uint8_t *addr7_out);
 bool ov5647_configure_800x640_raw8(uint8_t addr7);
+/** Official Espressif MIPI 2-lane 1920x1080 RAW10 @ ~30fps. */
+bool ov5647_configure_1920x1080_raw10(uint8_t addr7);
 bool ov5647_stream_restart(uint8_t addr7);
 bool ov5647_set_test_pattern(uint8_t addr7, bool enable);
 void ov5647_dump_key_regs(uint8_t addr7);
@@ -26,7 +28,7 @@ bool ov5647_get_agc(uint8_t addr7, bool *out);
 
 /**
  * Manual exposure in sensor lines; written as (lines << 4) into 0x3500..02.
- * Clamped to mode VTS (800x640 table uses VTS=984) so AEC cannot exceed a frame.
+ * Clamped to current mode VTS.
  */
 bool ov5647_set_exposure(uint8_t addr7, uint16_t lines);
 bool ov5647_get_exposure(uint8_t addr7, uint16_t *lines);
