@@ -1,0 +1,61 @@
+#pragma once
+
+/**
+ * Arduino / non-menuconfig defaults for vendored ESP-DL + official face models.
+ * Models load from VFS: {mount}/models/p4/*.espdl
+ * Default mount is "/sdcard"; call esp32p4_set_model_mount_point("/ffat") (or use
+ * ESP32P4_StoragePref) to use FFat / LittleFS / etc. See models/espdl/p4/.
+ */
+
+#ifndef CONFIG_HUMAN_FACE_DETECT_MODEL_IN_SDCARD
+#define CONFIG_HUMAN_FACE_DETECT_MODEL_IN_SDCARD 1
+#endif
+#ifndef CONFIG_HUMAN_FACE_FEAT_MODEL_IN_SDCARD
+#define CONFIG_HUMAN_FACE_FEAT_MODEL_IN_SDCARD 1
+#endif
+
+#ifndef CONFIG_HUMAN_FACE_DETECT_MODEL_SDCARD_DIR
+#define CONFIG_HUMAN_FACE_DETECT_MODEL_SDCARD_DIR "models/p4"
+#endif
+#ifndef CONFIG_HUMAN_FACE_FEAT_MODEL_SDCARD_DIR
+#define CONFIG_HUMAN_FACE_FEAT_MODEL_SDCARD_DIR "models/p4"
+#endif
+
+#ifndef CONFIG_BSP_SD_MOUNT_POINT
+#define CONFIG_BSP_SD_MOUNT_POINT "/sdcard"
+#endif
+
+#ifndef CONFIG_DEFAULT_HUMAN_FACE_DETECT_MODEL
+#define CONFIG_DEFAULT_HUMAN_FACE_DETECT_MODEL 0 /* MSRMNP_S8_V1 */
+#endif
+#ifndef CONFIG_DEFAULT_HUMAN_FACE_FEAT_MODEL
+#define CONFIG_DEFAULT_HUMAN_FACE_FEAT_MODEL 0 /* MFN_S8_V1 */
+#endif
+
+#ifndef CONFIG_FLASH_HUMAN_FACE_DETECT_MSRMNP_S8_V1
+#define CONFIG_FLASH_HUMAN_FACE_DETECT_MSRMNP_S8_V1 1
+#endif
+#ifndef CONFIG_FLASH_ESPDET_PICO_224_224_FACE
+#define CONFIG_FLASH_ESPDET_PICO_224_224_FACE 1
+#endif
+#ifndef CONFIG_FLASH_ESPDET_PICO_416_416_FACE
+#define CONFIG_FLASH_ESPDET_PICO_416_416_FACE 1
+#endif
+#ifndef CONFIG_FLASH_HUMAN_FACE_FEAT_MFN_S8_V1
+#define CONFIG_FLASH_HUMAN_FACE_FEAT_MFN_S8_V1 1
+#endif
+
+/* Image pixel converters used by face preprocess (RGB888 path). */
+#ifndef CONFIG_PIX_CVT_RGB888_TO_RGB888_SUPPORT
+#define CONFIG_PIX_CVT_RGB888_TO_RGB888_SUPPORT 1
+#endif
+#ifndef CONFIG_PIX_CVT_RGB565_TO_RGB888_SUPPORT
+#define CONFIG_PIX_CVT_RGB565_TO_RGB888_SUPPORT 1
+#endif
+#ifndef CONFIG_PIX_CVT_RGB888_TO_GRAY_SUPPORT
+#define CONFIG_PIX_CVT_RGB888_TO_GRAY_SUPPORT 1
+#endif
+
+#ifndef CONFIG_ESP_DL_RECOGNITION_MODEL_SDCARD_DIR
+#define CONFIG_ESP_DL_RECOGNITION_MODEL_SDCARD_DIR "models/p4"
+#endif

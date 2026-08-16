@@ -6,10 +6,12 @@
 
 #include "audio/ESP32P4_Mic.h"
 #include "cam/ESP32P4_Camera.h"
+#include "cam/ESP32P4_SmartAe.h"
 #include "cv/ESP32P4_CvDash.h"
 #include "h264/ESP32P4_H264.h"
 #include "jpeg/ESP32P4_Jpeg.h"
 #include "ppa/ESP32P4_Ppa.h"
+#include "qr/ESP32P4_Qr.h"
 #include "sd/ESP32P4_Sd.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -158,6 +160,31 @@ class ESP32P4_MjpegServer {
     _size_dirty = true;
   }
 
+  /**
+   * QR scan web panel (zxing-cpp + PPA). Sketch runs ESP32P4_Qr in setFrameHook
+   * and publishes results via qrUi().
+   */
+  struct QrUi {
+    bool on = false;
+    bool scan_en = false;
+    int codes = 0;
+    int ms = 0;
+    uint32_t formats = 0;  // ZXing BarcodeFormat bits; 0 → use ESP32P4_Qr::defaultFormats()
+    char payload[ESP32P4_QR_MAX_PAYLOAD] = {};
+    char format_name[24] = {};
+    bool settings_dirty = false;
+  };
+  bool enableQrUi(bool on = true);
+  bool qrUiEnabled() const { return _qr.on; }
+  QrUi &qrUi() { return _qr; }
+  const QrUi &qrUi() const { return _qr; }
+
+  /** Phone-like software AE (center-weighted luma → exposure then gain). */
+  bool enableSmartAe(bool on = true);
+  bool smartAeEnabled() const { return _smart_ae.enabled(); }
+  ESP32P4_SmartAe &smartAe() { return _smart_ae; }
+  const ESP32P4_SmartAe &smartAe() const { return _smart_ae; }
+
  private:
   void applyFaceForcedDims();
   static void faceModelToWH(int model, uint16_t *w, uint16_t *h);
@@ -239,6 +266,8 @@ class ESP32P4_MjpegServer {
   bool _cv_on = false;
   esp32p4_cv_dash_cfg_t _cv{};
   FaceUi _face{};
+  QrUi _qr{};
+  ESP32P4_SmartAe _smart_ae{};
 
   static void cvDashHook(uint16_t *rgb, int w, int h, void *user);
 

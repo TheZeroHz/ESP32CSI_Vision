@@ -2,6 +2,7 @@
 
 #include "driver/ppa.h"
 #include "esp_cache.h"
+#include "esp_heap_caps.h"
 
 #include <string.h>
 
@@ -317,16 +318,50 @@ bool ESP32P4_Ppa::scaleRgb565(const uint16_t *src, int sw, int sh, uint16_t *dst
 }
 
 bool ESP32P4_Ppa::rgb565ToGray(const uint16_t *src, int w, int h, uint8_t *dst) {
+  // Some ESP32-P4 / IDF builds reject RGB565→GRAY8 ("unsupported color mode").
+  // Probe once; on failure callers use SW luma (Cv::toGray / Img::luma565).
+  static int8_t s_gray8 = -1;
+  if (s_gray8 == 0) return false;
   size_t cap = (size_t)w * (size_t)h;
-  return srmRaw(src, w, h, (int)PPA_SRM_COLOR_MODE_RGB565, dst, cap, w, h,
-                (int)PPA_SRM_COLOR_MODE_GRAY8, 1.0f, 1.0f);
+  bool ok = srmRaw(src, w, h, (int)PPA_SRM_COLOR_MODE_RGB565, dst, cap, w, h,
+                   (int)PPA_SRM_COLOR_MODE_GRAY8, 1.0f, 1.0f);
+  s_gray8 = ok ? 1 : 0;
+  return ok;
 }
 
 bool ESP32P4_Ppa::rgb565ToGrayScale(const uint16_t *src, int sw, int sh, uint8_t *dst, int dw,
                                     int dh) {
-  size_t cap = (size_t)dw * (size_t)dh;
-  return srmRaw(src, sw, sh, (int)PPA_SRM_COLOR_MODE_RGB565, dst, cap, dw, dh,
-                (int)PPA_SRM_COLOR_MODE_GRAY8, (float)dw / (float)sw, (float)dh / (float)sh);
+  if (!src || !dst || sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0) return false;
+  // Prefer one-shot GRAY8 when HW supports it.
+  static int8_t s_gray8 = -1;
+  if (s_gray8 != 0) {
+    size_t cap = (size_t)dw * (size_t)dh;
+    bool ok = srmRaw(src, sw, sh, (int)PPA_SRM_COLOR_MODE_RGB565, dst, cap, dw, dh,
+                     (int)PPA_SRM_COLOR_MODE_GRAY8, (float)dw / (float)sw, (float)dh / (float)sh);
+    if (ok) {
+      s_gray8 = 1;
+      return true;
+    }
+    s_gray8 = 0;
+  }
+  // HW path that works on all P4 builds: PPA RGB565 scale, then SW luma.
+  size_t rgb_bytes = (size_t)dw * (size_t)dh * 2u;
+  uint16_t *tmp = (uint16_t *)heap_caps_aligned_alloc(128, rgb_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (!tmp) tmp = (uint16_t *)heap_caps_aligned_alloc(128, rgb_bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  if (!tmp) return false;
+  bool ok = scaleRgb565(src, sw, sh, tmp, dw, dh);
+  if (ok) {
+    size_t n = (size_t)dw * (size_t)dh;
+    for (size_t i = 0; i < n; i++) {
+      uint16_t px = tmp[i];
+      uint32_t r = (px >> 11) & 0x1f;
+      uint32_t g = (px >> 5) & 0x3f;
+      uint32_t b = px & 0x1f;
+      dst[i] = (uint8_t)((r * 38 + g * 75 + b * 15) >> 5);
+    }
+  }
+  heap_caps_free(tmp);
+  return ok;
 }
 
 bool ESP32P4_Ppa::fillRect565(uint16_t *img, int w, int h, int x, int y, int rw, int rh,

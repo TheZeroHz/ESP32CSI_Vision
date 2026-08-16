@@ -4,7 +4,7 @@ Arduino library for **ESP32-P4 MIPI CSI** cameras.
 
 ## CSI sensors
 
-MIPI drivers with **AUTO-probes**. Full detail: [docs/CSI-Cameras.md](docs/CSI-Cameras.md).
+First-party MIPI drivers (no `ESP_Video`). `cam.begin(board)` **AUTO-probes** the registry. Full detail: [docs/CSI-Cameras.md](docs/CSI-Cameras.md).
 
 | Status | Sensors |
 | --- | --- |
@@ -25,6 +25,8 @@ Common boards: Guition M3 / Waveshare Nano → OV5647 or IMX708 · Espressif Fun
 - OpenCV-like CV (gray, blur, threshold, morph, HSV blobs, edges, draw)
 - OpenCV-style core types (`Mat`, `Point`, `Rect`, ROI, PSRAM buffers)
 - ESP-DL face detect / enroll / recognize (`.espdl` on preferred storage)
+- **Smart AE** — software auto-exposure (center-weighted + highlight protect)
+- **Barcode / QR** scan ([zxing-cpp](https://github.com/zxing-cpp/zxing-cpp) + PPA): QR/Micro/rMQR, Aztec, PDF417, Code 128/39/93, Codabar, EAN/UPC, ITF, GS1 DataBar (+ Expanded/Limited)
 - Web file manager with multi-volume (SD + FFat + LittleFS, …)
 - Ethernet or Wi‑Fi networking (board-dependent)
 - PPA hardware scale / rotate / mirror / color convert
@@ -81,6 +83,8 @@ esp32:esp32:esp32p4:PSRAM=enabled,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB
 | CV | `ESP32P4_Cv` | Gray, blur, thresh, morph, HSV blobs, edges, draw |
 | OpenCV core | `esp_cv::Mat` / `cv::Mat` | Mat, Point, Rect, Scalar, ROI, PSRAM |
 | Face | `ESP32P4_FaceAi` | Detect + enroll + recognize (`.espdl` on storage) |
+| Smart AE | `ESP32P4_SmartAe` | Software AE (center-weighted luma + EV bias) |
+| QR / barcode | `ESP32P4_Qr` | zxing-cpp + PPA gray/scale (`scan` / `scanGray`) |
 | Files | `WebFileManager` | Multi-volume browser (usually `:82`) |
 | DSP | `ESP32P4_Dsp` | Motion / frame difference |
 | Mem | `esp32p4_psram_*` | Aligned PSRAM alloc |
@@ -276,9 +280,13 @@ Deep `src/espdl/` internals are not listed — use Face classes only.
 | `setFrameHook(fn, user)` / `clearFrameHook` | Annotate RGB565 before JPEG (not H.264 FB) |
 | `enableCvDashboard` / `cvDashboardEnabled` / `cvConfig` | Built-in CV UI modes |
 | `enableFaceUi` / `faceUiEnabled` / `faceUi()` | Face panel shared state |
+| `enableQrUi` / `qrUiEnabled` / `qrUi()` | QR / barcode panel shared state |
+| `enableSmartAe` / `smartAe()` | Software AE on stream frames |
 | `faceResLocked` / `syncFaceStreamSize` | Face forces stream size |
 
 **`FaceUi` fields:** `detect_en`, `recog_en`, `model`, `faces`, `ms`, `feats`, `thr_pct`, `enroll_*`, `roster`, `db_path`, request flags (`enroll_req`, `clear_req`, `delete_req`, `thr_req`, `settings_dirty`, …)
+
+**`QrUi` fields:** `on`, `scan_en`, `codes`, `ms`, `formats`, `payload`, `format_name`, `settings_dirty`
 
 **Stream framesize**
 
@@ -324,6 +332,10 @@ Deep `src/espdl/` internals are not listed — use Face classes only.
 | `face_thr` | 10–95 | Match threshold % |
 | `face_enroll` | name | Start enroll |
 | `face_model` | 0/1/2 | MSR+MNP / ESPDet224 / ESPDet416 |
+| `smart_ae` | 0/1 | Software Smart AE |
+| `smart_ae_ev` | −4…+4 | EV bias (½-stop units) |
+| `qr_en` | 0/1 | Enable barcode / QR scan |
+| `qr_fmts` | bitmask | Enabled symbologies (ZXing `BarcodeFormat` bits) |
 
 ---
 
@@ -500,6 +512,44 @@ DB paths: VFS `/sdcard/face/...` · card-relative `/face/...`
 
 ---
 
+### Smart AE — `ESP32P4_SmartAe`
+
+Phone-style software auto-exposure for CSI RGB565. Disables crude on-sensor AEC/AGC while enabled and drives manual exposure, then gain.
+
+| API | Meaning |
+| --- | --- |
+| `begin(cam)` / `end` | Bind camera |
+| `setEnabled` / `enabled` | On / off |
+| `setEvBias(half_stops)` / `evBias` | −4…+4 (½-stop units) |
+| `setTargetLuma` / `targetLuma` | Metering target |
+| `process(rgb565, w, h)` | Meter + update sensor (~10–15 Hz, rate-limited) |
+| `lastMeter` / `lastHighlight` / `lastPeak` | Last metering |
+| `lastExposure` / `lastGain` / `lastMs` | Last applied / timing |
+
+Use via `stream.enableSmartAe(true)` (or SENSOR tab). Example: `22_EthQrWeb`.
+
+---
+
+### QR / barcode — `ESP32P4_Qr`
+
+Engine: [zxing-cpp](https://github.com/zxing-cpp/zxing-cpp) v2.3.0 (`src/qr/zxing/`). Prefer **half-res GRAY** via PPA so MJPEG stays smooth.
+
+| API | Meaning |
+| --- | --- |
+| `begin(max_w, max_h, try_downscale)` / `end` / `ready` | PSRAM gray buffers |
+| `scan(rgb565, w, h, out, max)` | RGB565 → decode |
+| `scanGray(gray, w, h, scale_x, scale_y, out, max)` | Prebuilt GRAY8 (best for async) |
+| `draw(...)` | Boxes + truncated payload on RGB565 |
+| `lastMs` / `lastCount` / `lastUsedPpa` / `lastUsedDownscale` | Status |
+
+**Supported formats:** QR, Micro QR, rMQR, Aztec, PDF417, Code 128/39/93, Codabar, EAN-8/13, UPC-A/E, ITF, GS1 DataBar (+ Expanded / Limited).
+
+**`esp32p4_qr_code_t`:** corners[4][2], payload, payload_len, format.
+
+UI: `stream.enableQrUi(true)` + frame hook (see `22_EthQrWeb`).
+
+---
+
 ### Vision AI helpers — `ESP32P4_VisionAi` (static)
 
 | API | Meaning |
@@ -595,6 +645,7 @@ Typical ports: camera `:80`, WFM UI `:82`, transfers `:83`
 | `17` / `18_EthH264Record*` | Eth + record + mic (+ files, `APP_STORAGE`) |
 | `19_CvColorBlobs` / `20_EthCvPreview` | HSV blobs / live CV |
 | `21_EthFaceWeb` | Eth + face + settings + capture/record + WFM (`APP_STORAGE`) |
+| `22_EthQrWeb` | Eth + zxing-cpp barcodes/QR + Smart AE + MJPEG UI |
 
 Arduino IDE: **File → Examples → ESP32CSI_Vision → …**
 
@@ -605,8 +656,9 @@ Arduino IDE: **File → Examples → ESP32CSI_Vision → …**
 ```text
 src/
   ESP32CSI_Vision.h     ← umbrella include
-  cam/ jpeg/ ppa/ dsp/  ← capture / encode / scale / motion
+  cam/ jpeg/ ppa/ dsp/  ← capture / Smart AE / encode / scale / motion
   stream/               ← MJPEG + UI
+  qr/                   ← zxing-cpp barcode / QR
   cv/ opencv/           ← imgproc + Mat core
   face/ espdl/          ← Face AI + vendored ESP-DL
   h264/ audio/ sd/      ← record / mic / SD
@@ -625,6 +677,7 @@ examples/               ← Arduino sketches
 - Face models must be on the preferred volume before `FaceAi.begin()`; WFM can upload them.
 - For FFat: select a partition scheme with a FAT data partition (e.g. `app3M_fat9M_16MB`).
 - Class prefix stays `ESP32P4_*` for API stability; library name is CSI-oriented.
+- See [CHANGELOG.md](CHANGELOG.md) for Smart AE and barcode format history (v3.5.0).
 
 ---
 

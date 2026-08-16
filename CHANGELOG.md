@@ -1,5 +1,33 @@
 # Changelog
 
+## 3.5.0
+
+### Smart AE (software auto-exposure)
+
+- New `ESP32P4_SmartAe` (`src/cam/ESP32P4_SmartAe.*`): phone-style metering for CSI RGB565.
+- Center-weighted luma + highlight protection; exposure-first then gain; IIR smoothing.
+- Dynamic gain ceiling for dark/faded scenes; hard clip only when peak saturates (avoids whitening).
+- Wired into MJPEG worker + SENSOR UI (`smart_ae`, `smart_ae_ev`).
+- APIs: `MjpegServer::enableSmartAe()` / `smartAe()`; EV bias ±4 half-stops.
+
+### Barcode / QR (zxing-cpp)
+
+- Replaced lightweight QR path with vendored [zxing-cpp](https://github.com/zxing-cpp/zxing-cpp) **v2.3.0** under `src/qr/zxing/`.
+- Example `22_EthQrWeb`: Ethernet MJPEG + QR tab; **async** half-res gray decode (JPEG worker never blocks on zxing).
+- Stream-safe pipeline: in-place overlay, PPA RGB565→GRAY half-res snap, lean live options, Codabar start/stop stripped from payload.
+- QR mode letterboxes FOV (`scaleFit` + CSS `contain`) so codes are not cover-cropped.
+- **Per-format enable checkboxes** in the QR sidebar; shows decoded **type name**; settings persist to `/qr/settings.txt` (SD/FFat/LittleFS/SPIFFS) + NVS backup.
+
+**Supported symbologies**
+
+| Family | Formats |
+| --- | --- |
+| Matrix | QR Code, Micro QR, **rMQR**, Aztec, PDF417 |
+| 1D | Code 128, Code 39, Code 93, Codabar, EAN-8, EAN-13, UPC-A, UPC-E, ITF |
+| GS1 | DataBar, DataBar Expanded, DataBar Limited |
+
+Omitted (niche / heavy): Data Matrix, MaxiCode, DX Film Edge.
+
 ## 3.4.1
 
 - **`idf_examples/21_EthFaceWeb`**: Ethernet MJPEG web UI + official ESP-DL

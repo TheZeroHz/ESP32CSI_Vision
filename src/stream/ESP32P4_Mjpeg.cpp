@@ -26,12 +26,14 @@ main{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(0,1.45
 @media (max-width:860px){html,body{overflow:auto;height:auto}main{grid-template-columns:1fr;height:auto}}
 .view,.panel{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:10px;min-width:0;min-height:0}
 .view{display:flex;flex-direction:column;gap:6px}
-.stage{flex:1 1 auto;min-height:0;background:#000;border-radius:4px;overflow:hidden;line-height:0;display:flex;align-items:center;justify-content:center;isolation:isolate;contain:paint}
-.view img{width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;object-position:center;display:block;background:#000;border:0}
+.stage{position:relative;flex:1 1 auto;min-height:180px;background:#000;border-radius:4px;overflow:hidden;line-height:0;isolation:isolate;contain:paint}
+/* Face/CV: cover keeps overlays aligned. QR mode uses contain (see body.qr-mode) so codes are not CSS-cropped. */
+.stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;display:block;background:#000;border:0;margin:0}
+body.qr-mode .stage img{object-fit:contain}
 .links{display:flex;flex-wrap:wrap;gap:6px}
 .links a{color:var(--acc);text-decoration:none;font-size:11px}
 .panel{display:flex;flex-direction:column;overflow:hidden;max-height:calc(100vh - 56px)}
-.tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px;flex:0 0 auto}
+.tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:8px;flex:0 0 auto}
 .tabs button{padding:7px 4px;font-size:11px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;background:#0a1018;color:var(--muted);border:1px solid var(--line);border-radius:var(--r);cursor:pointer}
 .tabs button.on{color:var(--fg);border-color:var(--face-det);background:#15202b}
 .tabpane{display:none;flex:1 1 auto;min-height:0;overflow:auto;padding-right:2px}
@@ -71,6 +73,11 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .sw input:checked::after{left:18px}
 .sw input:disabled{opacity:.4;cursor:not-allowed}
 .face_status{font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:.03em;color:var(--face-ok);background:#0a1018;border:1px solid #2a3648;border-radius:var(--r);padding:6px 8px;margin:0 0 8px;line-height:1.35}
+.fmtfam{margin:8px 0 4px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.fmtlist{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:0 0 8px}
+.fmt{display:flex;align-items:center;gap:6px;padding:5px 7px;background:#0a1018;border:1px solid var(--line);border-radius:var(--r);cursor:pointer;user-select:none;font-size:11px}
+.fmt input{appearance:auto;width:14px;height:14px;margin:0;accent-color:var(--face-ok);flex:0 0 auto;cursor:pointer}
+.fmt span{line-height:1.2}
 #btn_face_enroll{background:#1f6b4a}
 #wave{width:100%;height:48px;display:block;margin:4px 0;background:#0a1018;border-radius:var(--r)}
 .compact .row{margin:4px 0}
@@ -98,6 +105,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
     <div class="tabs" id="side_tabs">
       <button type="button" data-tab="tab_stream" class="on">Stream</button>
       <button type="button" data-tab="tab_face" id="tabbtn_face">Face</button>
+      <button type="button" data-tab="tab_qr" id="tabbtn_qr">QR</button>
       <button type="button" data-tab="tab_rec">Record</button>
       <button type="button" data-tab="tab_sensor">Sensor</button>
     </div>
@@ -117,7 +125,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
           <option value="8">240×128</option>
           <option value="9">160×96</option>
         </select>
-        <div class="hint" id="fs_hint">÷16 sizes · letterbox fit</div>
+        <div class="hint" id="fs_hint">÷16 sizes · fill frame (cover)</div>
       </div>
       <div class="row"><label>JPEG q</label><span class="val" id="v_quality">35</span>
         <input id="quality" type="range" min="4" max="63" value="35"/>
@@ -239,6 +247,32 @@ button:disabled{opacity:.45;cursor:not-allowed}
       </div>
     </div>
 
+    <div id="tab_qr" class="tabpane">
+      <div id="qr_panel">
+      <h2>QR / barcode</h2>
+      <div id="qr_status" class="face_status">QR idle</div>
+      <div class="hint">Toggle formats below · settings saved to SD / FFat / flash · half-res async</div>
+      <div class="swrow">
+        <label class="sw"><span>SCAN</span><input id="qr_en" type="checkbox"/></label>
+      </div>
+      <div class="row full"><label>Type</label>
+        <input id="qr_fmt" class="field" type="text" readonly placeholder="(none yet)"/>
+      </div>
+      <div class="row full"><label>Last payload</label>
+        <input id="qr_payload" class="field" type="text" readonly placeholder="(none yet)"/>
+      </div>
+      <div class="btns single">
+        <button id="btn_qr_copy" type="button" class="secondary">Copy payload</button>
+      </div>
+      <div class="fmtfam">Matrix</div>
+      <div class="fmtlist" id="qr_fmts_matrix"></div>
+      <div class="fmtfam">1D</div>
+      <div class="fmtlist" id="qr_fmts_linear"></div>
+      <div class="fmtfam">GS1</div>
+      <div class="fmtlist" id="qr_fmts_gs1"></div>
+      </div>
+    </div>
+
     <div id="tab_rec" class="tabpane">
       <h2>Record</h2>
       <canvas id="wave" width="640" height="48"></canvas>
@@ -259,6 +293,13 @@ button:disabled{opacity:.45;cursor:not-allowed}
       <div class="swrow">
         <label class="sw"><span>H-MIR</span><input id="hmirror" type="checkbox"/></label>
         <label class="sw"><span>V-FLIP</span><input id="vflip" type="checkbox"/></label>
+      </div>
+      <div class="swrow">
+        <label class="sw"><span>SMART AE</span><input id="smart_ae" type="checkbox"/></label>
+      </div>
+      <div class="hint" id="smart_ae_hint">Center-weighted software AE (exposure then gain)</div>
+      <div class="row"><label>EV bias</label><span class="val" id="v_smart_ae_ev">0</span>
+        <input id="smart_ae_ev" type="range" min="-4" max="4" value="0"/>
       </div>
       <div class="swrow">
         <label class="sw"><span>AEC</span><input id="aec" type="checkbox" checked/></label>
@@ -349,6 +390,7 @@ bindRange('frameskip','frameskip');
 bindRange('aec_value','aec_value');
 bindRange('agc_gain','agc_gain');
 bindRange('gainceiling','gainceiling');
+bindRange('smart_ae_ev','smart_ae_ev');
 bindRange('mic_gain','mic_gain');
 document.getElementById('framesize').addEventListener('change',async e=>{
   stream.removeAttribute('src');
@@ -358,9 +400,27 @@ document.getElementById('framesize').addEventListener('change',async e=>{
 });
 bindSwitch('hmirror','hmirror');
 bindSwitch('vflip','vflip');
+bindSwitch('smart_ae','smart_ae');
 bindSwitch('aec','aec');
 bindSwitch('agc','agc');
 bindSwitch('colorbar','colorbar');
+function syncSmartAeUi(s){
+  const on=!!(s&&s.smart_ae);
+  ['aec','agc','aec_value','agc_gain'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.disabled=on;
+  });
+  const hint=document.getElementById('smart_ae_hint');
+  if(hint){
+    if(on){
+      hint.textContent='Smart AE · meter '+(s.smart_ae_meter!=null?Number(s.smart_ae_meter).toFixed(0):'—')+
+        ' · hi '+((s.smart_ae_hi!=null)?(Number(s.smart_ae_hi)*100).toFixed(0)+'%':'—')+
+        ' · exp '+(s.aec_value||'—')+' · gain '+(s.agc_gain||'—')+
+        ' · '+(s.smart_ae_ms||0)+'ms';
+    }else{
+      hint.textContent='Center-weighted software AE (exposure then gain)';
+    }
+  }
+}
 bindSelect('cv_mode','cv_mode');
 bindSelect('cv_preset','cv_preset');
 function syncFaceToggles(){
@@ -385,6 +445,16 @@ document.getElementById('face_detect').addEventListener('change',async e=>{
     syncFaceToggles();
   }finally{ faceBusy=false; }
 });
+document.getElementById('qr_en').addEventListener('change',async e=>{
+  await control('qr_en', faceOn(e.target)?'1':'0');
+});
+document.getElementById('btn_qr_copy').onclick=async()=>{
+  const p=document.getElementById('qr_payload');
+  const t=(p && p.value)||'';
+  if(!t){ toast('no payload'); return; }
+  try{ await navigator.clipboard.writeText(t); toast('copied'); }
+  catch(err){ toast('copy failed'); }
+};
 document.getElementById('face_recog').addEventListener('change',async e=>{
   faceBusy=true;
   try{
@@ -473,6 +543,84 @@ function setFaceStatus(s){
   const el=document.getElementById('face_status');
   if(el) el.textContent=faceStatusText(s);
 }
+function qrStatusText(s){
+  const ms=(s.qr_ms==null)?0:Number(s.qr_ms);
+  let st='BC '+(s.qr_n||0)+'  ·  '+(ms<0?'…':(ms+'ms'));
+  if(s.qr_en===0) st+='  ·  SCAN OFF';
+  else st+='  ·  SCAN ON';
+  if(s.qr_fmt) st+='  ·  '+String(s.qr_fmt);
+  if(s.qr_payload) st+='  ·  '+String(s.qr_payload).slice(0,32);
+  return st;
+}
+function setQrStatus(s){
+  const el=document.getElementById('qr_status');
+  if(el) el.textContent=qrStatusText(s);
+  const p=document.getElementById('qr_payload');
+  if(p && s.qr_payload!=null && document.activeElement!==p) p.value=String(s.qr_payload||'');
+  const f=document.getElementById('qr_fmt');
+  if(f && s.qr_fmt!=null && document.activeElement!==f) f.value=String(s.qr_fmt||'');
+  if(s.qr_fmts!=null) applyQrFmtChecks(Number(s.qr_fmts)||0);
+}
+
+/* ZXing BarcodeFormat bit flags (must match firmware). */
+const QR_FMT_ITEMS=[
+  {bit:1<<13, fam:'matrix', label:'QR Code'},
+  {bit:1<<16, fam:'matrix', label:'Micro QR'},
+  {bit:1<<17, fam:'matrix', label:'rMQR'},
+  {bit:1<<0,  fam:'matrix', label:'Aztec'},
+  {bit:1<<12, fam:'matrix', label:'PDF417'},
+  {bit:1<<4,  fam:'linear', label:'Code 128'},
+  {bit:1<<2,  fam:'linear', label:'Code 39'},
+  {bit:1<<3,  fam:'linear', label:'Code 93'},
+  {bit:1<<1,  fam:'linear', label:'Codabar'},
+  {bit:1<<8,  fam:'linear', label:'EAN-8'},
+  {bit:1<<9,  fam:'linear', label:'EAN-13'},
+  {bit:1<<14, fam:'linear', label:'UPC-A'},
+  {bit:1<<15, fam:'linear', label:'UPC-E'},
+  {bit:1<<10, fam:'linear', label:'ITF'},
+  {bit:1<<5,  fam:'gs1', label:'DataBar'},
+  {bit:1<<6,  fam:'gs1', label:'DataBar Exp'},
+  {bit:1<<19, fam:'gs1', label:'DataBar Ltd'},
+];
+const QR_FMT_ALL=QR_FMT_ITEMS.reduce((a,x)=>a|x.bit,0);
+let qrFmtApplying=false;
+function buildQrFmtLists(){
+  const hosts={matrix:'qr_fmts_matrix',linear:'qr_fmts_linear',gs1:'qr_fmts_gs1'};
+  for(const k of Object.keys(hosts)){const el=document.getElementById(hosts[k]); if(el) el.innerHTML='';}
+  for(const it of QR_FMT_ITEMS){
+    const host=document.getElementById(hosts[it.fam]);
+    if(!host) continue;
+    const lab=document.createElement('label');
+    lab.className='fmt';
+    lab.innerHTML='<input type="checkbox" data-bit="'+it.bit+'" checked/><span>'+it.label+'</span>';
+    const inp=lab.querySelector('input');
+    inp.addEventListener('change', onQrFmtChange);
+    host.appendChild(lab);
+  }
+}
+function readQrFmtMask(){
+  let m=0;
+  document.querySelectorAll('#qr_panel input[data-bit]').forEach(inp=>{
+    if(inp.checked) m|=Number(inp.getAttribute('data-bit'))||0;
+  });
+  return m||QR_FMT_ALL;
+}
+function applyQrFmtChecks(mask){
+  if(qrFmtApplying) return;
+  qrFmtApplying=true;
+  const m=(mask>>>0)||QR_FMT_ALL;
+  document.querySelectorAll('#qr_panel input[data-bit]').forEach(inp=>{
+    if(document.activeElement===inp) return;
+    const bit=Number(inp.getAttribute('data-bit'))||0;
+    inp.checked=!!(m&bit);
+  });
+  qrFmtApplying=false;
+}
+async function onQrFmtChange(){
+  if(qrFmtApplying) return;
+  const m=readQrFmtMask();
+  await control('qr_fmts', String(m>>>0));
+}
 
 function reconnectStream(){stream.src=streamUrl+'?ts='+Date.now()}
 function syncFaceResLock(s){
@@ -482,7 +630,7 @@ function syncFaceResLock(s){
   const fsh=document.getElementById('fs_hint');
   if(fsh && s){
     if(locked) fsh.textContent='FACE LOCK '+s.out_w+'×'+s.out_h+' · sensor '+s.native_w+'×'+s.native_h+' (model input forced)';
-    else fsh.textContent='Stream '+s.out_w+'×'+s.out_h+' · sensor '+s.native_w+'×'+s.native_h+' · uniform scale + letterbox';
+    else fsh.textContent='Stream '+s.out_w+'×'+s.out_h+' · sensor '+s.native_w+'×'+s.native_h+' · cover-fill frame';
   }
   return locked;
 }
@@ -648,8 +796,10 @@ function fillForm(s){
   };
   set('framesize',s.framesize); set('quality',s.quality); set('frameskip',s.frameskip);
   set('hmirror',s.hmirror); set('vflip',s.vflip); set('aec',s.aec); set('agc',s.agc);
+  set('smart_ae',s.smart_ae); set('smart_ae_ev',s.smart_ae_ev);
   set('aec_value',s.aec_value); set('agc_gain',s.agc_gain); set('gainceiling',s.gainceiling);
   set('colorbar',s.colorbar); set('mic_gain',s.mic_gain);
+  syncSmartAeUi(s);
   if(s.cv_ok){
     const pan=document.getElementById('cv_panel'); if(pan) pan.style.display='block';
     set('cv_mode',s.cv_mode); set('cv_preset',s.cv_preset);
@@ -682,7 +832,7 @@ function fillForm(s){
   if(sh){
     const name=s.sensor||'unknown';
     sh.textContent=name.indexOf('OV5647')>=0
-      ? ('Sensor: '+name+' — flip syncs ISP Bayer; exposure max 980 lines')
+      ? ('Sensor: '+name+(s.smart_ae?' · Smart AE on':' · flip syncs ISP Bayer'))
       : ('Sensor: '+name+' — mirror/AEC/AGC knobs are OV5647-only (no-op here)');
   }
   const hint=document.getElementById('sd_hint');
@@ -713,6 +863,7 @@ function metaText(s){
   if(s.recording) t+=' · REC '+fmtMs(s.rec_ms||0)+' '+ (s.rec_frames||0)+'f';
   else if(s.video_ok) t+=' · VID '+ (s.videos||0);
   if(s.cv_ok) t+=' · CV m'+s.cv_mode+' b'+(s.cv_blobs||0)+' p'+(s.cv_mask_px||0);
+  if(s.qr_ok && s.qr_en) t+=' · QR '+(s.qr_n||0);
   return t;
 }
 async function refreshMetaOnly(){
@@ -749,6 +900,7 @@ async function refreshMetaOnly(){
       rb.disabled=true;
     }
     if(!recBusy) setRecUi(!!s.recording, s.rec_ms||0);
+    syncSmartAeUi(s);
     if(s.cv_ok){
       const ch=document.getElementById('cv_hint');
       if(ch) ch.textContent='CV live · blobs='+(s.cv_blobs||0)+' · mask_px='+(s.cv_mask_px||0)+' · '+
@@ -766,6 +918,11 @@ async function refreshMetaOnly(){
         syncFaceToggles();
       }
     }
+    if(s.qr_ok){
+      setQrStatus(s);
+      const qe=document.getElementById('qr_en');
+      if(qe && document.activeElement!==qe) setFaceOn(qe, !!(s.qr_en));
+    }
   }catch(e){}
 }
 async function boot(){
@@ -778,6 +935,8 @@ async function boot(){
   }
   if(window.CAM_CV){ const pan=document.getElementById('cv_panel'); if(pan) pan.style.display='block'; }
   if(window.CAM_FACE){ showTab('tab_face'); }
+  if(window.CAM_QR){ document.body.classList.add('qr-mode'); showTab('tab_qr'); }
+  buildQrFmtLists();
   try{
     const s=await (await fetch('/status?_='+Date.now(),{cache:'no-store'})).json();
     fillForm(s);
@@ -905,6 +1064,7 @@ bool ESP32P4_MjpegServer::begin(ESP32P4_Camera *cam, uint16_t port, uint8_t qual
   _quality = quality < 4 ? 4 : (quality > 63 ? 63 : quality);
   if (!_jpeg.begin(cam->width(), cam->height(), _quality)) return false;
   _ppa.begin();
+  (void)_smart_ae.begin(_cam);
 
   _framesize = ESP32P4_STREAM_HD;
   applyFramesizeDims();
@@ -995,6 +1155,7 @@ void ESP32P4_MjpegServer::end() {
   }
   _jpeg.end();
   _ppa.end();
+  _smart_ae.end();
   for (int i = 0; i < 2; i++) {
     esp32p4_psram_free(_jpg_buf[i]);
     _jpg_buf[i] = nullptr;
@@ -1429,7 +1590,7 @@ void ESP32P4_MjpegServer::streamHttpLoop() {
 bool ESP32P4_MjpegServer::startWorker() {
   if (_worker) return true;
   _worker_run = true;
-  BaseType_t ok = xTaskCreatePinnedToCore(workerThunk, "p4cam_jpg", 16384, this, 5, &_worker, 1);
+  BaseType_t ok = xTaskCreatePinnedToCore(workerThunk, "p4cam_jpg", 32768, this, 5, &_worker, 1);
   return ok == pdPASS;
 }
 
@@ -1511,12 +1672,15 @@ void ESP32P4_MjpegServer::workerLoop() {
 
     if (ow != fb->width || oh != fb->height) {
       bool scaled = false;
-      // Face lock / any FD-FR session: cover-crop so overlays never land in letterbox bands.
-      if (faceResLocked() || (_face.on && (_face.detect_en || _face.recog_en))) {
-        memset(_scale_buf, 0, (size_t)ow * (size_t)oh * 2);
-        scaled = _ppa.scaleCover(fb, _scale_buf, _scale_cap, ow, oh);
-      } else {
+      // QR needs the full sensor FOV (letterbox). Cover-crop chops finder patterns at the edges.
+      memset(_scale_buf, 0, (size_t)ow * (size_t)oh * 2);
+      if (_qr.on) {
         scaled = _ppa.scaleFit(fb, _scale_buf, _scale_cap, ow, oh);
+        if (!scaled) scaled = _ppa.scaleCover(fb, _scale_buf, _scale_cap, ow, oh);
+      } else {
+        // Face/CV: cover-crop so overlays stay inside the visible frame.
+        scaled = _ppa.scaleCover(fb, _scale_buf, _scale_cap, ow, oh);
+        if (!scaled) scaled = _ppa.scaleFit(fb, _scale_buf, _scale_cap, ow, oh);
       }
       if (!scaled && ow == (uint16_t)(fb->width / 2) && oh == (uint16_t)(fb->height / 2) &&
                  (size_t)ow * oh * 2 <= _scale_cap) {
@@ -1535,16 +1699,15 @@ void ESP32P4_MjpegServer::workerLoop() {
       eh = oh;
     }
 
-    // Optional CV / annotate hook — always on a mutable copy (scale_buf).
-    if (_frame_hook && _scale_buf) {
-      size_t need = (size_t)ew * (size_t)eh * 2;
-      if (need <= _scale_cap) {
-        if (rgb != _scale_buf) {
-          memcpy(_scale_buf, rgb, need);
-          rgb = _scale_buf;
-        }
-        _frame_hook((uint16_t *)_scale_buf, (int)ew, (int)eh, _frame_hook_user);
-      }
+    // Annotate in place (CSI fb or scale_buf). Never full-frame memcpy just for the hook —
+    // that copy + QR snap was starving JPEG/TCP and produced half-black MJPEG parts.
+    if (_frame_hook && rgb) {
+      _frame_hook((uint16_t *)rgb, (int)ew, (int)eh, _frame_hook_user);
+    }
+
+    // Software Smart AE on stream buffer (subsampled; rate-limited inside).
+    if (_smart_ae.enabled() && rgb) {
+      _smart_ae.process((const uint16_t *)rgb, (int)ew, (int)eh);
     }
 
     const int i = _enc_idx;
@@ -1600,6 +1763,7 @@ bool ESP32P4_MjpegServer::enableCvDashboard(bool on) {
   _cv_on = on;
   if (on) {
     _face.on = false;
+    _qr.on = false;
     _cv.mode = ESP32P4_CV_EDGE_TRACK;
     _cv.preset = ESP32P4_CV_PRESET_COINS;
     ESP32P4_CvDash::applyPreset(_cv, _cv.preset);
@@ -1613,17 +1777,38 @@ bool ESP32P4_MjpegServer::enableCvDashboard(bool on) {
 
 bool ESP32P4_MjpegServer::enableFaceUi(bool on) {
   _face.on = on;
-  if (on) _cv_on = false;
+  if (on) {
+    _cv_on = false;
+    _qr.on = false;
+  }
+  return true;
+}
+
+bool ESP32P4_MjpegServer::enableQrUi(bool on) {
+  _qr.on = on;
+  if (on) {
+    _cv_on = false;
+    _face.on = false;
+    if (!_qr.formats) _qr.formats = ESP32P4_Qr::defaultFormats();
+  }
+  return true;
+}
+
+bool ESP32P4_MjpegServer::enableSmartAe(bool on) {
+  if (!_cam) return false;
+  if (!_smart_ae.begin(_cam)) return false;
+  _smart_ae.setEnabled(on);
   return true;
 }
 
 void ESP32P4_MjpegServer::handleRoot() {
   _http->setContentLength(CONTENT_LENGTH_UNKNOWN);
   _http->send(200, "text/html; charset=utf-8", "");
-  char boot[128];
+  char boot[160];
   snprintf(boot, sizeof(boot),
-           "<script>window.CAM_FILES_PORT=%u;window.CAM_CV=%s;window.CAM_FACE=%s;</script>",
-           (unsigned)_files_port, _cv_on ? "true" : "false", _face.on ? "true" : "false");
+           "<script>window.CAM_FILES_PORT=%u;window.CAM_CV=%s;window.CAM_FACE=%s;window.CAM_QR=%s;</script>",
+           (unsigned)_files_port, _cv_on ? "true" : "false", _face.on ? "true" : "false",
+           _qr.on ? "true" : "false");
   _http->sendContent(boot);
   _http->sendContent_P(INDEX_HTML);
 }
@@ -1816,7 +2001,8 @@ void ESP32P4_MjpegServer::handleStream() {
     while (off < n) {
       if (!client.connected()) break;
       // Hard cap: a stuck socket must not pin this slot forever.
-      if ((millis() - send_t0) > 1500) break;
+      // Prefer dropping the connection over delivering a truncated JPEG (browser shows black tear).
+      if ((millis() - send_t0) > 2500) break;
       size_t chunk = n - off;
       if (chunk > 2048) chunk = 2048;
       size_t w = client.write(_jpg_buf[idx] + off, chunk);
@@ -1849,8 +2035,33 @@ void ESP32P4_MjpegServer::handleStatus() {
   _cam->getGain(&gain);
   _cam->getGainCeiling(&ceil);
 
+  // While Smart AE owns exposure/gain, report sensor AEC/AGC as off in UI.
+  if (_smart_ae.enabled()) {
+    aec = false;
+    agc = false;
+    exp = _smart_ae.lastExposure();
+    gain = _smart_ae.lastGain();
+  }
+
   // Keep off the HTTP task stack — a 4KB local here caused Stack protection fault on p4cam_http.
-  static char buf[3072];
+  static char buf[3584];
+  static char qr_esc[ESP32P4_QR_MAX_PAYLOAD * 2];
+  qr_esc[0] = '\0';
+  if (_qr.on && _qr.payload[0]) {
+    size_t o = 0;
+    for (size_t i = 0; _qr.payload[i] && o + 6 < sizeof(qr_esc); i++) {
+      char c = _qr.payload[i];
+      if (c == '\\' || c == '"') {
+        qr_esc[o++] = '\\';
+        qr_esc[o++] = c;
+      } else if ((uint8_t)c < 0x20) {
+        o += (size_t)snprintf(qr_esc + o, sizeof(qr_esc) - o, "\\u%04x", (unsigned)(uint8_t)c);
+      } else {
+        qr_esc[o++] = c;
+      }
+    }
+    qr_esc[o] = '\0';
+  }
   snprintf(buf, sizeof(buf),
            "{\"sensor\":\"%s\",\"framesize\":%u,\"out_w\":%u,\"out_h\":%u,"
            "\"w\":%u,\"h\":%u,\"native_w\":%u,\"native_h\":%u,"
@@ -1859,6 +2070,7 @@ void ESP32P4_MjpegServer::handleStatus() {
            "\"control_port\":%u,\"stream_port\":%u,"
            "\"hmirror\":%u,\"vflip\":%u,\"aec\":%u,\"agc\":%u,"
            "\"aec_value\":%u,\"agc_gain\":%u,\"gainceiling\":%u,\"colorbar\":%u,"
+           "\"smart_ae\":%u,\"smart_ae_ev\":%d,\"smart_ae_meter\":%.1f,\"smart_ae_hi\":%.3f,\"smart_ae_ms\":%u,"
            "\"sd_ok\":%u,\"sd_folder\":\"%s\",\"saved\":%u,\"last_saved\":\"%s\","
            "\"video_ok\":%u,\"video_folder\":\"%s\",\"videos\":%u,\"last_video\":\"%s\","
            "\"recording\":%u,\"finalizing\":%u,\"rec_ms\":%u,\"rec_frames\":%u,"
@@ -1871,14 +2083,17 @@ void ESP32P4_MjpegServer::handleStatus() {
            "\"face_ok\":%u,\"face_model\":%u,\"face_n\":%d,\"face_ms\":%d,\"face_feats\":%d,"
            "\"face_detect\":%u,\"face_recog\":%u,\"face_thr\":%u,\"face_lock\":%u,"
            "\"face_enroll_ok\":%d,\"face_enroll_id\":%d,\"face_enroll_got\":%d,\"face_enroll_need\":%d,"
-           "\"face_roster\":\"%s\",\"face_db\":\"%s\"}\n",
+           "\"face_roster\":\"%s\",\"face_db\":\"%s\","
+           "\"qr_ok\":%u,\"qr_en\":%u,\"qr_n\":%d,\"qr_ms\":%d,\"qr_fmts\":%u,\"qr_fmt\":\"%s\",\"qr_payload\":\"%s\"}\n",
            _cam->sensorName(), (unsigned)_framesize, (unsigned)_out_w, (unsigned)_out_h,
            (unsigned)_out_w, (unsigned)_out_h, (unsigned)_cam->width(), (unsigned)_cam->height(),
            (unsigned)_quality, (unsigned)_frame_skip, (unsigned)_last_jpeg, (unsigned)_encode_ms,
            (unsigned)_sent, (unsigned)_dropped, (unsigned)esp32p4_psram_free_size(),
            (unsigned)_port, (unsigned)_stream_port, hm ? 1u : 0u, vf ? 1u : 0u, aec ? 1u : 0u,
            agc ? 1u : 0u, (unsigned)exp, (unsigned)gain, (unsigned)ceil,
-           _cam->testPattern() ? 1u : 0u, sdCaptureEnabled() ? 1u : 0u, _sd_folder,
+           _cam->testPattern() ? 1u : 0u, _smart_ae.enabled() ? 1u : 0u, _smart_ae.evBias(),
+           _smart_ae.lastMeter(), _smart_ae.lastHighlight(), (unsigned)_smart_ae.lastMs(),
+           sdCaptureEnabled() ? 1u : 0u, _sd_folder,
            (unsigned)_saved, _last_saved, videoRecordEnabled() ? 1u : 0u, _video_folder,
            (unsigned)_videos, _last_video, _recording ? 1u : 0u, _rec_finalizing ? 1u : 0u,
            (unsigned)(_recording && _h264 ? _h264->recordElapsedMs() : 0),
@@ -1895,7 +2110,10 @@ void ESP32P4_MjpegServer::handleStatus() {
            (int)_face.feats, _face.detect_en ? 1u : 0u, _face.recog_en ? 1u : 0u,
            (unsigned)_face.thr_pct, faceResLocked() ? 1u : 0u, (int)_face.enroll_ok,
            (int)_face.enroll_id, (int)_face.enroll_got, (int)_face.enroll_need, _face.roster,
-           _face.db_path[0] ? _face.db_path : "/sdcard/face/face.db");
+           _face.db_path[0] ? _face.db_path : "/sdcard/face/face.db",
+           _qr.on ? 1u : 0u, _qr.scan_en ? 1u : 0u, (int)_qr.codes, (int)_qr.ms,
+           (unsigned)(_qr.formats ? _qr.formats : ESP32P4_Qr::defaultFormats()),
+           _qr.format_name[0] ? _qr.format_name : "", qr_esc);
   _http->send(200, "application/json", buf);
 }
 
@@ -1949,22 +2167,33 @@ bool ESP32P4_MjpegServer::applyControl(const String &var, int val) {
     if (ok) _face.settings_dirty = true;
     return ok;
   }
+  if (var == "smart_ae") {
+    return enableSmartAe(val != 0);
+  }
+  if (var == "smart_ae_ev") {
+    _smart_ae.setEvBias(val);
+    return true;
+  }
   if (var == "aec") {
+    if (val != 0) _smart_ae.setEnabled(false);
     bool ok = _cam->setAEC(val != 0);
     if (ok) _face.settings_dirty = true;
     return ok;
   }
   if (var == "agc") {
+    if (val != 0) _smart_ae.setEnabled(false);
     bool ok = _cam->setAGC(val != 0);
     if (ok) _face.settings_dirty = true;
     return ok;
   }
   if (var == "aec_value") {
+    if (_smart_ae.enabled()) return true;  // driven by Smart AE
     bool ok = _cam->setExposure((uint16_t)val);
     if (ok) _face.settings_dirty = true;
     return ok;
   }
   if (var == "agc_gain") {
+    if (_smart_ae.enabled()) return true;
     bool ok = _cam->setGain((uint16_t)val);
     if (ok) _face.settings_dirty = true;
     return ok;
@@ -1993,6 +2222,22 @@ bool ESP32P4_MjpegServer::applyControl(const String &var, int val) {
       applyFaceForcedDims();
       _size_dirty = true;
     }
+    return true;
+  }
+  if (var == "qr_en") {
+    _qr.scan_en = val != 0;
+    if (!_qr.scan_en) {
+      _qr.codes = 0;
+      _qr.ms = 0;
+    }
+    _qr.settings_dirty = true;
+    return true;
+  }
+  if (var == "qr_fmts") {
+    uint32_t mask = (uint32_t)val & ESP32P4_Qr::defaultFormats();
+    if (!mask) mask = ESP32P4_Qr::defaultFormats();
+    _qr.formats = mask;
+    _qr.settings_dirty = true;
     return true;
   }
   if (var == "face_detect") {

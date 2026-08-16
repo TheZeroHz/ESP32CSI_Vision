@@ -1,0 +1,29 @@
+# --- local / IDE ---
+.cursor/
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- agent / debug scratch (never commit) ---
+.tmp*/
+.tmp_*
+*.tmp
+_vendor_tmp/
+esp-vision-master/
+
+# --- Arduino / PlatformIO build ---
+build/
+.pio/
+*.o
+*.elf
+*.map
+
+# --- Python / host probes ---
+__pycache__/
+*.pyc
+.venv/
+venv/
