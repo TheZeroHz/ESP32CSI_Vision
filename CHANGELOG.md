@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.5.1
+
+- **OV2710 stream**: `stream_on`/`stream_off` now use Espressif `0x3008` / `0x4202` (not `0x0100`). Fixes `capture timeout` after a successful probe (confirmed on LilyGO T-Display P4).
+
 ## 3.5.0
 
 ### Smart AE (software auto-exposure)

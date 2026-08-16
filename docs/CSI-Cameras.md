@@ -38,7 +38,7 @@ Default `sensor` is `ESP32P4_SENSOR_AUTO` (ordered registry probe).
 | SC2336 | 0x30 | 720p / 1080p RAW10 | 2 | 405 | BGGR | Supported | Espressif Apache-2.0 |
 | OV5647 | 0x36 | 800×640 RAW8, 1080p RAW10 | 2 | 200–500 | GBRG | Supported | Existing + Espressif |
 | OV5645 | 0x3C/0x3D | 1280×960 RGB565 | 2 | 448 | sensor RGB565 | Experimental | Espressif Apache-2.0 |
-| OV2710 | 0x36 | 1080p RAW10 | 1 | 800 | BGGR | Experimental | Espressif Apache-2.0 |
+| OV2710 | 0x36 | 1080p RAW10 | 1 | 800 | BGGR | Experimental (T-Display P4) | Espressif Apache-2.0 |
 | OV9281 | 0x60/0x10 | 1280×720 RAW8 | 2 | 400 | BGGR (mono) | Supported | Espressif Apache-2.0 |
 | SC202CS | 0x36 | 1280×720 RAW8 | 1 | 360 | BGGR | Supported | Espressif Apache-2.0 |
 | SC1346 | 0x30 | 720p RAW10 | 1 | 480 | BGGR | Supported | Espressif Apache-2.0 |

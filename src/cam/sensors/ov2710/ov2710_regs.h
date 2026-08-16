@@ -20,6 +20,13 @@ extern "C" {
 #define OV2710_REG_SENSOR_ID_H             0x300a
 #define OV2710_REG_SENSOR_ID_L             0x300b
 
+/* Software sleep / stream (not 0x0100 — that is SC2336/OV5647). */
+#define OV2710_REG_SW_SLEEP                0x3008
+#define OV2710_REG_FRAME_CTRL01            0x4201
+#define OV2710_REG_FRAME_CTRL02            0x4202
+#define OV2710_SW_SLEEP_ON                 0x42
+#define OV2710_SW_SLEEP_OFF                0x02
+
 #define OV2710_REG_RED_BEFORE_GAIN_AVERAGE      0x5196  /* R Bit[7:0]: Before AWB gain's red data average*/
 #define OV2710_REG_GREEN_BEFORE_GAIN_AVERAGE    0x5197  /* R Bit[7:0]: Before AWB gain's green data average*/
 #define OV2710_REG_BLUE_BEFORE_GAIN_AVERAGE     0x5198  /* R Bit[7:0]: Before AWB gain's blue data average*/

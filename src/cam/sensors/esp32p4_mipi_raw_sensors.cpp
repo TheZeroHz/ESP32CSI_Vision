@@ -157,8 +157,17 @@ static bool detect(uint8_t *addr7_out) {
   }
   return false;
 }
-static bool stream_on(uint8_t addr7) { return esp32p4_sccb_write8(addr7, 0x0100, 0x01); }
-static bool stream_off(uint8_t addr7) { return esp32p4_sccb_write8(addr7, 0x0100, 0x00); }
+static bool stream_on(uint8_t addr7) {
+  // Espressif ov2710_set_stream(1): un-gate frames, then leave software sleep.
+  return esp32p4_sccb_write8(addr7, OV2710_REG_FRAME_CTRL01, 0x00) &&
+         esp32p4_sccb_write8(addr7, OV2710_REG_FRAME_CTRL02, 0x00) &&
+         esp32p4_sccb_write8(addr7, OV2710_REG_SW_SLEEP, OV2710_SW_SLEEP_OFF);
+}
+static bool stream_off(uint8_t addr7) {
+  return esp32p4_sccb_write8(addr7, OV2710_REG_SW_SLEEP, OV2710_SW_SLEEP_ON) &&
+         esp32p4_sccb_write8(addr7, OV2710_REG_FRAME_CTRL01, 0x00) &&
+         esp32p4_sccb_write8(addr7, OV2710_REG_FRAME_CTRL02, 0x0f);
+}
 static bool configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p4_cam_mode_t *mode_out) {
   (void)want;
   stream_off(addr7);
