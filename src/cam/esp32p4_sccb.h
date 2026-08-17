@@ -4,6 +4,11 @@
 #include <stdbool.h>
 
 #ifdef __cplusplus
+#include <Wire.h>
+
+void esp32p4_sccb_set_bus(TwoWire *bus);  // nullptr → Wire
+TwoWire &esp32p4_sccb_bus();
+
 extern "C" {
 #endif
 

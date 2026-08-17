@@ -197,6 +197,7 @@ Serial.printf("%s @0x%02X  %ux%u  fb=%u  psram=%s\n",
 | --- | --- | --- | --- |
 | `sda` | `int` | `7` | I²C SDA GPIO |
 | `scl` | `int` | `8` | I²C SCL GPIO |
+| `wire` | `TwoWire *` | `&Wire` | I²C instance (`&Wire` or `&Wire1`). `nullptr` = `Wire` |
 | `xclk` | `int` | `-1` | External XCLK GPIO (`-1` = unused / internal) |
 | `pwdn` | `int` | `-1` | Power-down GPIO |
 | `reset` | `int` | `-1` | Reset GPIO |
@@ -228,6 +229,9 @@ esp32p4_cam_config_t cfg = esp32p4_cam_config_board(ESP32P4_BOARD_GUITION_M3);
 cfg.fb_count = 3;
 cfg.lane_bit_rate_mbps = 200;
 cam.begin(cfg);
+
+// Dual I²C (camera on the second bus, e.g. LilyGO T-Display P4):
+// cfg.sda = 20; cfg.scl = 21; cfg.wire = &Wire1;
 ```
 
 ### `camera_fb_t`

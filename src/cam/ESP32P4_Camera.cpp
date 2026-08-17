@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "cam/esp32p4_cam_sensor_ops.h"
+#include "cam/esp32p4_sccb.h"
 #include "driver/isp.h"
 #include "driver/isp_demosaic.h"
 #include "driver/ledc.h"
@@ -145,6 +146,7 @@ esp32p4_cam_config_t esp32p4_cam_config_board(esp32p4_board_t board) {
   esp32p4_cam_config_t c{};
   c.sda = 7;
   c.scl = 8;
+  c.wire = &Wire;
   c.xclk = -1;
   c.pwdn = -1;
   c.reset = -1;
@@ -226,16 +228,19 @@ bool ESP32P4_Camera::init_sensor() {
     delay(20);
   }
 
-  Wire.begin(_cfg.sda, _cfg.scl);
-  Wire.setClock(100000);
+  TwoWire &i2c = _cfg.wire ? *_cfg.wire : Wire;
+  esp32p4_sccb_set_bus(&i2c);
+  i2c.begin(_cfg.sda, _cfg.scl);
+  i2c.setClock(100000);
   delay(20);
 
-  Serial.printf("CSI: I2C scan SDA=%d SCL=%d  registry=%u sensors\n", _cfg.sda, _cfg.scl,
-                (unsigned)esp32p4_cam_sensor_registry_count());
+  const char *bus_name = (&i2c == &Wire) ? "Wire" : "Wire1";
+  Serial.printf("CSI: I2C scan SDA=%d SCL=%d  bus=%s  registry=%u sensors\n", _cfg.sda, _cfg.scl,
+                bus_name, (unsigned)esp32p4_cam_sensor_registry_count());
   int found = 0;
   for (int a = 1; a < 127; a++) {
-    Wire.beginTransmission(a);
-    if (Wire.endTransmission() == 0) {
+    i2c.beginTransmission(a);
+    if (i2c.endTransmission() == 0) {
       Serial.printf("  ack 0x%02X\n", a);
       found++;
     }

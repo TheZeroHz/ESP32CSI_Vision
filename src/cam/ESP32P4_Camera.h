@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <Wire.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -80,6 +81,7 @@ enum esp32p4_board_t {
 struct esp32p4_cam_config_t {
   int sda;
   int scl;
+  TwoWire *wire;  // nullptr / &Wire = I2C0; &Wire1 = second bus (e.g. T-Display P4 camera)
   int xclk;
   int pwdn;
   int reset;

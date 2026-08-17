@@ -3,39 +3,42 @@
 #include <Arduino.h>
 #include <Wire.h>
 
+#include "cam/esp32p4_sccb.h"
 #include "cam/sensors/imx708_regs.h"
 #include "cam/sensors/imx708_settings.h"
 
 static const uint8_t kProbeAddrs[] = {0x1A, 0x10};
 
+static TwoWire &bus() { return esp32p4_sccb_bus(); }
+
 bool imx708_i2c_write8(uint8_t addr7, uint16_t reg, uint8_t val) {
-  Wire.beginTransmission(addr7);
-  Wire.write((uint8_t)(reg >> 8));
-  Wire.write((uint8_t)(reg & 0xFF));
-  Wire.write(val);
-  return Wire.endTransmission() == 0;
+  bus().beginTransmission(addr7);
+  bus().write((uint8_t)(reg >> 8));
+  bus().write((uint8_t)(reg & 0xFF));
+  bus().write(val);
+  return bus().endTransmission() == 0;
 }
 
 bool imx708_i2c_read8(uint8_t addr7, uint16_t reg, uint8_t *val) {
-  Wire.beginTransmission(addr7);
-  Wire.write((uint8_t)(reg >> 8));
-  Wire.write((uint8_t)(reg & 0xFF));
-  if (Wire.endTransmission() != 0) return false;
+  bus().beginTransmission(addr7);
+  bus().write((uint8_t)(reg >> 8));
+  bus().write((uint8_t)(reg & 0xFF));
+  if (bus().endTransmission() != 0) return false;
   delayMicroseconds(50);
-  if (Wire.requestFrom((int)addr7, 1) != 1) return false;
-  *val = (uint8_t)Wire.read();
+  if (bus().requestFrom((int)addr7, 1) != 1) return false;
+  *val = (uint8_t)bus().read();
   return true;
 }
 
 bool imx708_i2c_read16(uint8_t addr7, uint16_t reg, uint16_t *val) {
-  Wire.beginTransmission(addr7);
-  Wire.write((uint8_t)(reg >> 8));
-  Wire.write((uint8_t)(reg & 0xFF));
-  if (Wire.endTransmission() != 0) return false;
+  bus().beginTransmission(addr7);
+  bus().write((uint8_t)(reg >> 8));
+  bus().write((uint8_t)(reg & 0xFF));
+  if (bus().endTransmission() != 0) return false;
   delayMicroseconds(50);
-  if (Wire.requestFrom((int)addr7, 2) != 2) return false;
-  uint16_t hi = (uint16_t)Wire.read();
-  uint16_t lo = (uint16_t)Wire.read();
+  if (bus().requestFrom((int)addr7, 2) != 2) return false;
+  uint16_t hi = (uint16_t)bus().read();
+  uint16_t lo = (uint16_t)bus().read();
   *val = (uint16_t)((hi << 8) | lo);
   return true;
 }
