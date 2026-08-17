@@ -47,10 +47,19 @@ cfg.frame_size = ESP32P4_FRAMESIZE_800X640;
 
 ## Pixel format — `esp32p4_cam_pixformat_t`
 
+Sketch **framebuffer** format (`cfg.pixel_format` / `fb->format`). This is **not** the sensor MIPI type listed as RAW10/RAW8 in [CSI-Cameras.md](../CSI-Cameras.md).
+
+Bayer RAW from the sensor is converted by the P4 ISP. Always set:
+
+```cpp
+cfg.pixel_format = ESP32P4_PIXFORMAT_RGB565;
+```
+
 | Enum | Value | Bytes/pixel | Notes |
 | --- | :---: | :---: | --- |
-| `ESP32P4_PIXFORMAT_RGB565` | 0 | 2 | Default for JPEG / MJPEG / DSP |
-| `ESP32P4_PIXFORMAT_RAW10` | 1 | — | Raw path (advanced) |
+| `ESP32P4_PIXFORMAT_RGB565` | 0 | 2 | **Use this.** JPEG / MJPEG / H.264 / CV. `begin()` forces this today. |
+| `ESP32P4_PIXFORMAT_RAW10` | 1 | — | Reserved. Not a working capture path. Do not set this to “match” a RAW10 sensor. |
+| `ESP32P4_PIXFORMAT_RAW8` | 2 | — | Reserved. Same as above. |
 
 ---
 

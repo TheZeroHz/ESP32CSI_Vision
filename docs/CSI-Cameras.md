@@ -5,10 +5,23 @@ First-party MIPI-CSI stack for ESP32-P4 — **no Arduino `ESP_Video` / V4L2**. S
 ```cpp
 ESP32P4_Camera cam;
 cam.begin(ESP32P4_BOARD_…);       // AUTO probe by default
-camera_fb_t *fb = cam.capture();  // RGB565 in PSRAM
+camera_fb_t *fb = cam.capture();  // always RGB565 in PSRAM
 ```
 
 ESP32-P4 ISP RGB565 pipeline max is **1920×1080**. Higher native sensors use binned/cropped modes.
+
+### Sensor MIPI vs sketch output
+
+These are **not** the same field. Do not copy the table’s RAW10/RAW8 into `cfg.pixel_format`.
+
+| Layer | What it is | Typical OV2710 / OV5647 |
+| --- | --- | --- |
+| **CSI input** (table column below) | What the sensor sends over MIPI | Bayer **RAW10** (BGGR / GBRG / …) |
+| **Sketch output** (`cfg.pixel_format` / `fb->format`) | What `cam.capture()` returns | **`ESP32P4_PIXFORMAT_RGB565`** |
+
+Pipeline: **sensor RAW8/RAW10** → P4 ISP demosaic → **RGB565 framebuffer**. A few sensors (e.g. OV5645) already output RGB565 on CSI; those skip demosaic.
+
+Keep `cfg.pixel_format = ESP32P4_PIXFORMAT_RGB565` (the default). `ESP32P4_PIXFORMAT_RAW10` / `RAW8` are reserved enums — `begin()` currently forces RGB565 anyway. JPEG, MJPEG, H.264, and CV all expect RGB565.
 
 ## Boards
 
@@ -31,9 +44,11 @@ Default `sensor` is `ESP32P4_SENSOR_AUTO` (ordered registry probe).
 
 ## Sensor matrix
 
+**CSI input** = MIPI format from the sensor (Bayer RAW or sensor RGB565). Capture to the sketch is still RGB565 (see above).
+
 ### Tier A — Espressif MIPI parity
 
-| Sensor | SCCB (7-bit) | Mode(s) | Lanes | Mbps/lane | Bayer / fmt | Status | Source |
+| Sensor | SCCB (7-bit) | CSI input | Lanes | Mbps/lane | Bayer / fmt | Status | Source |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | SC2336 | 0x30 | 720p / 1080p RAW10 | 2 | 405 | BGGR | Supported | Espressif Apache-2.0 |
 | OV5647 | 0x36 | 800×640 RAW8, 1080p RAW10 | 2 | 200–500 | GBRG | Supported | Existing + Espressif |
@@ -53,7 +68,7 @@ Default `sensor` is `ESP32P4_SENSOR_AUTO` (ordered registry probe).
 
 ### Tier B — market / Pi-class (beyond Espressif)
 
-| Sensor | SCCB | Mode(s) | Status | Notes |
+| Sensor | SCCB | CSI input | Status | Notes |
 | --- | --- | --- | --- | --- |
 | IMX708 | 0x1A | 720p / 2304×1296 RAW10 | Supported | Pi Cam 3 |
 | IMX219 | 0x10 | 1080p RAW10 | Experimental | Pi Cam v2 modules |

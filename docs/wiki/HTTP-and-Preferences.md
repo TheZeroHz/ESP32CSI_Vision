@@ -218,7 +218,7 @@ Set **before** `cam.begin(cfg)` — not via HTTP.
 | --- | --- | --- |
 | `fb_count` | More buffering / smoother stream | `2` or `3` |
 | `frame_size` | Native CSI resolution | `ESP32P4_FRAMESIZE_800X640` |
-| `pixel_format` | Output format | `ESP32P4_PIXFORMAT_RGB565` |
+| `pixel_format` | Sketch framebuffer (keep RGB565; not the CSI RAW10 table) | `ESP32P4_PIXFORMAT_RGB565` |
 | `sensor` | Force sensor | `ESP32P4_SENSOR_OV5647` |
 | `lane_bit_rate_mbps` | CSI lane rate | `200` |
 | `ldo_mv` / `ldo_chan` | MIPI PHY power | `2500` / `3` |

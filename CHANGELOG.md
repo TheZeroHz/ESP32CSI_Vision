@@ -4,6 +4,7 @@
 
 - **OV2710 stream**: `stream_on`/`stream_off` now use Espressif `0x3008` / `0x4202` (not `0x0100`). Fixes `capture timeout` after a successful probe (confirmed on LilyGO T-Display P4).
 - **Camera I²C bus**: `esp32p4_cam_config_t::wire` selects `Wire` (default) or `Wire1`. Dual-bus boards (LilyGO T-Display P4 camera on I2C1) can keep `Wire` for other devices.
+- **Docs**: CSI-Cameras / wiki now separate **sensor MIPI** (RAW10/RAW8) from **`cfg.pixel_format`** (`RGB565` after ISP). Do not set `ESP32P4_PIXFORMAT_RAW10` for OV2710.
 
 ## 3.5.0
 

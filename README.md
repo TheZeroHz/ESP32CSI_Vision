@@ -216,7 +216,7 @@ Deep `src/espdl/` internals are not listed — use Face classes only.
 | `newTransCount` / `doneCount` | CSI transfer stats |
 | `fbCount` / `psramOk` | FB pool / PSRAM health |
 
-**Enums:** `esp32p4_board_t` (`GUITION_M3`, `WAVESHARE_NANO`, `FUNCTION_EV`, `CUSTOM`) · `esp32p4_cam_sensor_t` (`AUTO` + Tier A/B/C IDs — see [docs/CSI-Cameras.md](docs/CSI-Cameras.md)) · `esp32p4_cam_framesize_t` · `esp32p4_cam_pixformat_t` (`RGB565`, `RAW10`, `RAW8`)
+**Enums:** `esp32p4_board_t` (`GUITION_M3`, `WAVESHARE_NANO`, `FUNCTION_EV`, `CUSTOM`) · `esp32p4_cam_sensor_t` (`AUTO` + Tier A/B/C IDs — see [docs/CSI-Cameras.md](docs/CSI-Cameras.md)) · `esp32p4_cam_framesize_t` · `esp32p4_cam_pixformat_t` (**always `RGB565` for `capture()`**; table RAW10/RAW8 there is CSI input, not this enum)
 
 **`camera_fb_t`:** `buf`, `len`, `width`, `height`, `format`, `timestamp_us`
 

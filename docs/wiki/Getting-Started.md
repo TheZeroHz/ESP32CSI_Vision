@@ -66,6 +66,8 @@ void loop() {
 
 Serial @ **115200**. Expect lines like `CSI: streaming 800x640 RGB565`.
 
+`cam.capture()` is always **RGB565**. Sensor tables that say RAW10 (OV5647, OV2710, …) mean the **MIPI input**; the ISP converts that to RGB565. Keep `cfg.pixel_format = ESP32P4_PIXFORMAT_RGB565`.
+
 ---
 
 ## Next steps

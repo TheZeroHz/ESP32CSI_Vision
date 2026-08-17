@@ -90,6 +90,7 @@ struct esp32p4_cam_config_t {
   int ldo_chan;
   int ldo_mv;
   esp32p4_cam_framesize_t frame_size;
+  /** Framebuffer after ISP. Use RGB565. Sensor MIPI RAW is not this field. */
   esp32p4_cam_pixformat_t pixel_format;
   int lane_bit_rate_mbps;
   esp32p4_cam_sensor_t sensor;

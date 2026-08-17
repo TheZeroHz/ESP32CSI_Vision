@@ -2,7 +2,7 @@
 
 ## Capture / stream
 
-- Sensor **auto** → OV5647 **1920×1080 RAW10** (falls back to 800×640 if needed)
+- Sensor **auto** → OV5647 **1920×1080** (CSI RAW10 → ISP RGB565; falls back to 800×640 if needed)
 - MJPEG default **Half** of native (960×540) — pick Native / ~720 / Quarter in the UI
 - Stream sizes are **computed from live sensor** `native_w×native_h` (16-aligned)
 

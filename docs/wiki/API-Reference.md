@@ -206,7 +206,7 @@ Serial.printf("%s @0x%02X  %ux%u  fb=%u  psram=%s\n",
 | `ldo_chan` | `int` | `3` | MIPI PHY LDO channel |
 | `ldo_mv` | `int` | `2500` | LDO millivolts |
 | `frame_size` | `esp32p4_cam_framesize_t` | `800×640` | Native CSI size |
-| `pixel_format` | `esp32p4_cam_pixformat_t` | `RGB565` | Output format |
+| `pixel_format` | `esp32p4_cam_pixformat_t` | `RGB565` | Framebuffer after ISP. Keep `ESP32P4_PIXFORMAT_RGB565`. Sensor MIPI RAW10/RAW8 is chosen by the driver, not this field. |
 | `lane_bit_rate_mbps` | `int` | `200` | CSI lane bitrate |
 | `sensor` | `esp32p4_cam_sensor_t` | `OV5647` | Sensor selection |
 | `test_pattern` | `bool` | `false` | Start with pattern |
