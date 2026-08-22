@@ -259,13 +259,16 @@ void WebFileManager::bindRoutes() {
 }
 
 void WebFileManager::loop() {
-  if (_started && _ui) _ui->handleClient();
+  if (_started && _ui && !_fileTask && !_paused) _ui->handleClient();
 }
 
 void WebFileManager::fileTaskThunk(void *arg) {
   auto *self = static_cast<WebFileManager *>(arg);
   for (;;) {
-    if (self->_started && self->_file) self->_file->handleClient();
+    if (!self->_paused && self->_started) {
+      if (self->_ui) self->_ui->handleClient();
+      if (self->_file) self->_file->handleClient();
+    }
     vTaskDelay(pdMS_TO_TICKS(1));
   }
 }
@@ -283,10 +286,8 @@ void WebFileManager::usageTaskThunk(void *arg) {
   for (int i = 0; i < self->_volCount; i++) {
     WfmStorage *s = self->_vols[i].store;
     if (!s || !s->mounted()) continue;
-    s->lock();
     total += s->totalBytes();
     used += s->usedBytes();
-    s->unlock();
   }
   if (total == 0) {
     self->_usageState = 3;
@@ -305,6 +306,7 @@ void WebFileManager::refreshUsageAsync() {
 }
 
 void WebFileManager::handleRoot() {
+  noteBusy();
   _ui->setContentLength(CONTENT_LENGTH_UNKNOWN);
   _ui->send(200, "text/html; charset=utf-8", "");
   char boot[200];
@@ -366,6 +368,7 @@ void WebFileManager::handleStatus() {
 }
 
 void WebFileManager::handleList() {
+  noteBusy();
   if (!anyMounted()) {
     sendJsonErr(*_ui, 503, "not mounted");
     return;
@@ -452,7 +455,8 @@ void WebFileManager::handleList() {
     bool is_dir = f.isDirectory();
     uint32_t sz = is_dir ? 0 : (uint32_t)f.size();
     f.close();
-    if (!base[0] || (base[0] == '.' && (base[1] == 0 || (base[1] == '.' && base[2] == 0)))) {
+    if (!base[0] || (base[0] == '.' && (base[1] == 0 || (base[1] == '.' && base[2] == 0))) ||
+        isRecWorkName(base) || isMuxTempName(base)) {
       f = dir.openNextFile();
       continue;
     }
@@ -480,6 +484,7 @@ void WebFileManager::handleList() {
 }
 
 void WebFileManager::handleText() {
+  noteBusy();
   String path = _ui->hasArg("path") ? _ui->arg("path") : "";
   WfmStorage *store = nullptr;
   String local;
@@ -616,6 +621,7 @@ void WebFileManager::handleTextSave() {
 }
 
 void WebFileManager::handleDetails() {
+  noteBusy();
   String path = _ui->hasArg("path") ? _ui->arg("path") : "";
   WfmStorage *store = nullptr;
   String local;
@@ -673,6 +679,7 @@ bool WebFileManager::deleteRecursive(WfmStorage &store, const String &path) {
 }
 
 void WebFileManager::handleDelete() {
+  noteBusy();
   String path = _ui->hasArg("path") ? _ui->arg("path") : "";
   WfmStorage *store = nullptr;
   String local;
@@ -854,6 +861,7 @@ bool WebFileManager::copyFile(WfmStorage &fromStore, const String &from, WfmStor
 }
 
 void WebFileManager::handleCopy() {
+  noteBusy();
   String from = _ui->hasArg("from") ? _ui->arg("from") : "";
   String to = _ui->hasArg("to") ? _ui->arg("to") : "";
   WfmStorage *fs = nullptr, *ts = nullptr;
@@ -884,6 +892,7 @@ void WebFileManager::handleCopy() {
 }
 
 void WebFileManager::handleMove() {
+  noteBusy();
   String from = _ui->hasArg("from") ? _ui->arg("from") : "";
   String to = _ui->hasArg("to") ? _ui->arg("to") : "";
   WfmStorage *fs = nullptr, *ts = nullptr;
@@ -928,7 +937,8 @@ void WebFileManager::searchWalk(SearchState &st, WfmStorage &store, const String
     bool is_dir = f.isDirectory();
     uint32_t sz = is_dir ? 0 : (uint32_t)f.size();
     f.close();
-    if (base[0] && !(base[0] == '.' && (base[1] == 0 || (base[1] == '.' && base[2] == 0)))) {
+    if (base[0] && !(base[0] == '.' && (base[1] == 0 || (base[1] == '.' && base[2] == 0))) &&
+        !isRecWorkName(base) && !isMuxTempName(base)) {
       String fullLocal = joinPath(dir, base);
       String fullPub =
           (pubPrefix == "/") ? joinPath(pubPrefix, base) : (pubPrefix + "/" + String(base));
@@ -973,6 +983,7 @@ void WebFileManager::searchWalk(SearchState &st, WfmStorage &store, const String
 }
 
 void WebFileManager::handleSearch() {
+  noteBusy();
   String q = _ui->hasArg("q") ? _ui->arg("q") : "";
   q.trim();
   q.toLowerCase();
@@ -1040,6 +1051,7 @@ bool WebFileManager::parseByteRange(const String &rangeHdr, size_t fileSize, siz
 
 void WebFileManager::streamFile(WfmStorage &store, WebServer &srv, File &f, size_t start,
                                 size_t length) {
+  noteBusy();
   NetworkClient client = srv.client();
   client.setNoDelay(true);
   client.setTimeout(120000);
@@ -1073,6 +1085,7 @@ void WebFileManager::streamFile(WfmStorage &store, WebServer &srv, File &f, size
     }
     if (off < n) break;
     remaining -= n;
+    noteBusy();
     vTaskDelay(1);
   }
   if (heap) free(buf);
@@ -1111,6 +1124,7 @@ void WebFileManager::sendFileWithRanges(WfmStorage &store, WebServer &srv, File 
 }
 
 void WebFileManager::handleView(WebServer &srv) {
+  noteBusy();
   String path = srv.hasArg("path") ? srv.arg("path") : "";
   WfmStorage *store = nullptr;
   String local;
@@ -1139,6 +1153,7 @@ void WebFileManager::handleView(WebServer &srv) {
 }
 
 void WebFileManager::handleDownload(WebServer &srv) {
+  noteBusy();
   String path = srv.hasArg("path") ? srv.arg("path") : "";
   WfmStorage *store = nullptr;
   String local;
@@ -1170,6 +1185,7 @@ void WebFileManager::handleUploadOptions(WebServer &srv) {
 }
 
 void WebFileManager::handleUploadStream(WebServer &srv) {
+  noteBusy();
   HTTPUpload &up = srv.upload();
   if (up.status == UPLOAD_FILE_START) {
     _uploadOk = false;

@@ -98,3 +98,4 @@ struct RGB8882RGB888<RGBSwap, ExtraProcess> {
 };
 } // namespace image
 } // namespace dl
+

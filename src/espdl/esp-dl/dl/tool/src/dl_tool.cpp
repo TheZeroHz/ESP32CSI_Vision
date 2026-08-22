@@ -207,20 +207,17 @@ HEAP_IRAM_ATTR void *malloc_aligned(size_t size, uint32_t caps)
 {
 #if SOC_SIMD_INSTRUCTION_SUPPORTED
     void *ret = heap_caps_aligned_alloc(16, size, caps | MALLOC_CAP_SIMD);
+    if (!ret) ret = heap_caps_aligned_alloc(16, size, caps);
 #else
     void *ret = heap_caps_aligned_alloc(16, size, caps);
 #endif
     if (!ret) {
         int largest_free_block = heap_caps_get_largest_free_block(caps);
-        if (largest_free_block < size) {
-            ESP_LOGE(DL_LOG_TAG,
-                     "Failed to alloc %.2fKB memory, largest available block size %.2fKB. ",
-                     size / 1024.f,
-                     largest_free_block / 1024.f);
-        } else {
-            ESP_LOGE(
-                DL_LOG_TAG, "Input cap=0x%lx can not callocate with MALLOC_CAP_SIMD, please try other caps.", caps);
-        }
+        ESP_LOGE(DL_LOG_TAG,
+                 "Failed to alloc %.2fKB memory, largest available block size %.2fKB (caps=0x%lx).",
+                 size / 1024.f,
+                 largest_free_block / 1024.f,
+                 (unsigned long)caps);
     }
 
     return ret;
@@ -230,20 +227,17 @@ HEAP_IRAM_ATTR void *calloc_aligned(size_t n, size_t size, uint32_t caps)
 {
 #if SOC_SIMD_INSTRUCTION_SUPPORTED
     void *ret = heap_caps_aligned_calloc(16, n, size, caps | MALLOC_CAP_SIMD);
+    if (!ret) ret = heap_caps_aligned_calloc(16, n, size, caps);
 #else
     void *ret = heap_caps_aligned_calloc(16, n, size, caps);
 #endif
     if (!ret) {
         int largest_free_block = heap_caps_get_largest_free_block(caps);
-        if (largest_free_block < size) {
-            ESP_LOGE(DL_LOG_TAG,
-                     "Failed to alloc %.2fKB memory, largest available block size %.2fKB. ",
-                     size / 1024.f,
-                     largest_free_block / 1024.f);
-        } else {
-            ESP_LOGE(
-                DL_LOG_TAG, "Input cap=0x%lx can not callocate with MALLOC_CAP_SIMD, please try other caps.", caps);
-        }
+        ESP_LOGE(DL_LOG_TAG,
+                 "Failed to alloc %.2fKB memory, largest available block size %.2fKB (caps=0x%lx).",
+                 (n * size) / 1024.f,
+                 largest_free_block / 1024.f,
+                 (unsigned long)caps);
     }
 
     return ret;
@@ -269,3 +263,4 @@ float *gen_lut_8bit(float *table, int exponent, std::function<float(float)> func
 
 } // namespace tool
 } // namespace dl
+

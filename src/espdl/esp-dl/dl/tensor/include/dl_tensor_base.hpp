@@ -303,7 +303,7 @@ public:
     bool auto_free;               ///< free element when object destroy
     std::vector<int> axis_offset; ///< element offset of each axis
     void *data;                   ///< data pointer
-    void *cache;                  ///< cache pointer， used for preload and do not need to free
+    void *cache;                  ///< cache pointerï¼Œ used for preload and do not need to free
     uint32_t caps;                ///< flags indicating the type of memory
 
     /**
@@ -603,8 +603,8 @@ public:
      *
      * @param input_element Data pointer of input tensor
      * @param input_shape   Shape of input tensor
-     * @param pads   The number of padding elements to add, pads format should be: [x1_begin, x2_begin, …, x1_end,
-     * x2_end,…]
+     * @param pads   The number of padding elements to add, pads format should be: [x1_begin, x2_begin, â€¦, x1_end,
+     * x2_end,â€¦]
      * @param mode   Supported modes: constant(default), reflect, edge
      * @param const_value (Optional) A scalar value to be used if the mode chosen is constant
      *
@@ -621,7 +621,7 @@ public:
      * @brief Pad input tensor
      *
      * @param input  Input tensor pointer
-     * @param pads   Padding elements to add, pads format should be: [x1_begin, x2_begin, …, x1_end, x2_end,…]
+     * @param pads   Padding elements to add, pads format should be: [x1_begin, x2_begin, â€¦, x1_end, x2_end,â€¦]
      * @param mode   Supported modes: constant(default), reflect, edge
      * @param const_value (Optional) A scalar value to be used if the mode chosen is constant
      *
@@ -743,3 +743,4 @@ public:
     virtual void print(bool print_data = false);
 };
 } // namespace dl
+

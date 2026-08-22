@@ -91,3 +91,4 @@ struct RGB8882Gray<RGBSwap, ExtraProcess> {
 };
 } // namespace image
 } // namespace dl
+

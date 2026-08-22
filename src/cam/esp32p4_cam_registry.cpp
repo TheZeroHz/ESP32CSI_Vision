@@ -9,8 +9,10 @@ static const esp32p4_cam_sensor_ops_t *registry_at(size_t i) {
       ov5647_sensor_ops(),
       imx708_sensor_ops(),
       sc2336_sensor_ops(),
+      sc2331_sensor_ops(),
       imx219_sensor_ops(),
       ov5645_sensor_ops(),
+      ov5640_sensor_ops(),
       ov9281_sensor_ops(),
       os02n10_sensor_ops(),
       sc035hgs_sensor_ops(),
@@ -20,25 +22,29 @@ static const esp32p4_cam_sensor_ops_t *registry_at(size_t i) {
       sc030iot_sensor_ops(),
       os04c10_sensor_ops(),
       sti2250_sensor_ops(),
+      gc2607_sensor_ops(),
       mira220_sensor_ops(),
       gc2145_sensor_ops(),
+      lt6911_sensor_ops(),
       sc121at_sensor_ops(),
       imx477_sensor_ops(),
+      imx462_sensor_ops(),
       gc2083_sensor_ops(),
       gc2093_sensor_ops(),
       imx335_sensor_ops(),
       imx415_sensor_ops(),
       ov7251_sensor_ops(),
       imx296_sensor_ops(),
-      imx462_sensor_ops(),
       arducam_imx500_sensor_ops(),
+      ov2640_sensor_ops(),
+      sp0a39_sensor_ops(),
   };
   if (i >= sizeof(list) / sizeof(list[0])) return nullptr;
   return list[i];
 }
 
 const esp32p4_cam_sensor_ops_t *const *esp32p4_cam_sensor_registry(void) {
-  static const esp32p4_cam_sensor_ops_t *table[32];
+  static const esp32p4_cam_sensor_ops_t *table[40];
   static bool ready = false;
   if (!ready) {
     size_t n = 0;
@@ -69,15 +75,21 @@ const esp32p4_cam_sensor_ops_t *esp32p4_cam_sensor_find(esp32p4_cam_sensor_t id)
 }
 
 const esp32p4_cam_sensor_ops_t *esp32p4_cam_sensor_probe(esp32p4_cam_sensor_t prefer, uint8_t *addr7_out) {
+  return esp32p4_cam_sensor_probe_bus(prefer, addr7_out, ESP32P4_CAM_BUS_CSI);
+}
+
+const esp32p4_cam_sensor_ops_t *esp32p4_cam_sensor_probe_bus(esp32p4_cam_sensor_t prefer, uint8_t *addr7_out,
+                                                            esp32p4_cam_bus_t bus) {
   const esp32p4_cam_sensor_ops_t *const *t = esp32p4_cam_sensor_registry();
   if (prefer != ESP32P4_SENSOR_AUTO) {
     const esp32p4_cam_sensor_ops_t *ops = esp32p4_cam_sensor_find(prefer);
-    if (ops && ops->detect && ops->detect(addr7_out)) return ops;
-    Serial.printf("CSI: preferred %s not found — AUTO probe\n", ops ? ops->name : "?");
+    if (ops && ops->detect && ops->bus == bus && ops->detect(addr7_out)) return ops;
+    Serial.printf("CSI: preferred %s not found on this bus - AUTO probe\n", ops ? ops->name : "?");
   }
   for (size_t i = 0; t[i]; i++) {
     uint8_t a = 0;
     if (!t[i]->detect) continue;
+    if (t[i]->bus != bus) continue;
     if (t[i]->detect(&a)) {
       if (addr7_out) *addr7_out = a;
       Serial.printf("CSI: probed %s @ 0x%02X (%s)\n", t[i]->name, a,

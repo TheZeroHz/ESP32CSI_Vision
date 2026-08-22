@@ -54,8 +54,8 @@ bool ESP32P4_Sd::begin(const esp32p4_sd_config_t &cfg) {
   Serial.printf("SD: pins clk=%d cmd=%d d0=%d d1=%d d2=%d d3=%d  ldo=%d\n", _cfg.clk, _cfg.cmd,
                 _cfg.d0, _cfg.d1, _cfg.d2, _cfg.d3, _cfg.ldo_chan);
 
-  if (!SD_MMC.begin(_cfg.mountpoint, _cfg.mode1bit, _cfg.format_if_mount_failed, _cfg.frequency)) {
-    Serial.println("SD: mount FAILED (FAT32? seated? LDO ch4 powered?)");
+  if (!SD_MMC.begin(_cfg.mountpoint, _cfg.mode1bit, _cfg.format_if_mount_failed, _cfg.frequency, 5)) {
+    Serial.println("SD: mount FAILED (FAT32? seated? SD LDO channel in ESP32CSI_SD_LDO_CHAN?)");
     return false;
   }
 

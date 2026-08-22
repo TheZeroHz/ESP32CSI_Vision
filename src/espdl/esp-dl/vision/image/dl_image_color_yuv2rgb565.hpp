@@ -68,3 +68,4 @@ template <bool YUYVOrUYVY, bool RGB565BE, bool RGBSwap>
 inline constexpr bool is_yuv2rgb565_v<YUV2RGB565<YUYVOrUYVY, RGB565BE, RGBSwap>> = true;
 } // namespace image
 } // namespace dl
+

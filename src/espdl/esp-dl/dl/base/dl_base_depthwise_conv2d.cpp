@@ -880,3 +880,4 @@ void depthwise_conv2d<int8_t, int32_t, int32_t>(void *args_ptr)
 }
 } // namespace base
 } // namespace dl
+

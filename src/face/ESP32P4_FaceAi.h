@@ -33,6 +33,10 @@ struct esp32p4_face_id_t {
 class ESP32P4_FaceAi {
  public:
   using DetModel = ESP32P4_FaceDetect::Model;
+  enum FeatModel : int {
+    MFN_S8_V1 = 0,  // MobileFaceNet — default, ~1.3 MB
+    MBF_S8_V1 = 1,  // MobileFaceNet-Big — higher TAR, ~3.4 MB
+  };
 
   ESP32P4_FaceAi() = default;
   ~ESP32P4_FaceAi() { end(); }
@@ -40,14 +44,16 @@ class ESP32P4_FaceAi {
   /**
    * @param db_path   feature DB path, e.g. "/sdcard/face.db" (nullptr = detect-only)
    * @param names_path sidecar names file, e.g. "/sdcard/face_names.txt"
+   * @param feat      MFN (default) or MBF. Switching feat invalidates an existing DB.
    */
   bool begin(DetModel det = ESP32P4_FaceDetect::MSRMNP_S8_V1, const char *db_path = "/sdcard/face.db",
-             const char *names_path = "/sdcard/face_names.txt");
+             const char *names_path = "/sdcard/face_names.txt", FeatModel feat = MFN_S8_V1);
   void end();
   bool ready() const { return _det != nullptr; }
   bool recognitionReady() const { return _rec != nullptr; }
 
   bool setDetModel(DetModel m);
+  bool setFeatModel(FeatModel f);
 
   /**
    * Detect (+ optional recognize). While enroll is pending, recognize is forced off
@@ -86,6 +92,10 @@ class ESP32P4_FaceAi {
   static void draw(uint16_t *rgb565, int w, int h, const esp32p4_face_id_t *faces, int n);
 
   DetModel detModel() const { return _det_model; }
+  FeatModel featModel() const { return _feat_model; }
+  static const char *featName(FeatModel f) {
+    return f == MBF_S8_V1 ? "MBF_S8_V1" : "MFN_S8_V1";
+  }
   const char *dbPath() const { return _db_path; }
   int lastMs() const { return _last_ms; }
   int lastCount() const { return _last_n; }
@@ -127,6 +137,7 @@ class ESP32P4_FaceAi {
   int _full_w = 0, _full_h = 0;     // original frame
   int _crop_x = 0, _crop_y = 0, _crop_w = 0, _crop_h = 0;
   DetModel _det_model = ESP32P4_FaceDetect::MSRMNP_S8_V1;
+  FeatModel _feat_model = MFN_S8_V1;
   char _db_path[64] = {};
   char _names_path[64] = {};
   char _pending_name[24] = {};

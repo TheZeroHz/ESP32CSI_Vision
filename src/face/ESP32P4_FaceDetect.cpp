@@ -5,6 +5,7 @@
 #include "human_face_detect.hpp"
 #include "img/ESP32P4_Img.h"
 #include "mem/ESP32P4_Psram.h"
+#include "storage/esp32p4_model_mount.h"
 
 #include "esp_log.h"
 
@@ -13,6 +14,24 @@ static const char *TAG = "ESP32P4_FaceDetect";
 bool ESP32P4_FaceDetect::begin(Model model) {
   end();
   _model = model;
+
+  if (model == ESPDET_PICO_224) {
+    if (!esp32p4_locate_models_p4("espdet_pico_224_224_face.espdl")) {
+      ESP_LOGW(TAG, "espdet_pico_224_224_face.espdl not found");
+      return false;
+    }
+  } else if (model == ESPDET_PICO_416) {
+    if (!esp32p4_locate_models_p4("espdet_pico_416_416_face.espdl")) {
+      ESP_LOGW(TAG, "espdet_pico_416_416_face.espdl not found");
+      return false;
+    }
+  } else {
+    const char *pair[2] = {"human_face_detect_msr_s8_v1.espdl", "human_face_detect_mnp_s8_v1.espdl"};
+    if (!esp32p4_locate_models_p4_n(pair, 2)) {
+      ESP_LOGW(TAG, "MSR/MNP face .espdl not found");
+      return false;
+    }
+  }
 
   HumanFaceDetect::model_type_t t = HumanFaceDetect::MSRMNP_S8_V1;
   switch (model) {

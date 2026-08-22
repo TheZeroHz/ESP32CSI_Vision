@@ -39,17 +39,17 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#ifndef ETH_PHY_MDC
-#define ETH_PHY_TYPE  ETH_PHY_IP101
-#define ETH_PHY_ADDR  1
-#define ETH_PHY_MDC   31
-#define ETH_PHY_MDIO  52
-#define ETH_PHY_POWER 51
-#define ETH_CLK_MODE  EMAC_CLK_EXT_IN
+
+#include "board_config.h"
+#include <ETH.h>
+
+#ifndef APP_NAME
+#define APP_NAME "21_EthFaceWeb"
+#endif
+#ifndef APP_DEBUG
+#define APP_DEBUG ESP32P4_DBG_LIVE
 #endif
 
-#include <ETH.h>
-#include <ESP32CSI_Vision.h>
 
 static const uint16_t CAM_UI_PORT = 80;
 static const uint16_t WFM_UI_PORT = 82;
@@ -170,7 +170,7 @@ static void ensureModelDirs() {
  *  FS paths are root-relative (/face/...); fopen uses VFS ({mount}/face/...). */
 static void ensureFaceStore() {
   if (!store.exists(kFaceDir)) store.mkdir(kFaceDir);
-  ::mkdir(kFaceDirVfs, 0775);
+  mkdir(kFaceDirVfs, 0775);
 
   auto copyFile = [](const char *from_vfs, const char *to_vfs) -> bool {
     FILE *in = fopen(from_vfs, "rb");
@@ -220,11 +220,11 @@ static void ensureFaceStore() {
                 store.exists(kDbFs) ? 1 : 0, sz);
 }
 
-static ESP32P4_FaceDetect::Model modelFromUi(int m) {
+static int modelFromUi(int m) {
   switch (m) {
-    case 1: return ESP32P4_FaceDetect::ESPDET_PICO_224;
-    case 2: return ESP32P4_FaceDetect::ESPDET_PICO_416;
-    default: return ESP32P4_FaceDetect::MSRMNP_S8_V1;
+    case 1: return ESP32P4_FACE_ESPDET_PICO_224;
+    case 2: return ESP32P4_FACE_ESPDET_PICO_416;
+    default: return ESP32P4_FACE_MSRMNP_S8_V1;
   }
 }
 
@@ -403,7 +403,7 @@ static void faceHook(uint16_t *rgb, int w, int h, void *) {
   syncFaceUiStatus();
 
   if (n > 0) {
-    ESP32P4_FaceAi::draw(rgb, w, h, g_faces, n);
+    face.draw(rgb, w, h, g_faces, n);
   }
 }
 
@@ -453,7 +453,7 @@ static bool startEthAndWfm() {
 
 static void printUploadHelp(const IPAddress &ip) {
   Serial.println();
-  Serial.printf("Missing /models/p4/*.espdl on %s — upload via WebFileManager:\n", store.label());
+  Serial.printf("Missing /models/p4/*.espdl on %s - upload via WebFileManager:\n", store.label());
   Serial.printf("  Files  http://%s:%u/\n", ip.toString().c_str(), (unsigned)WFM_UI_PORT);
   Serial.printf("  Put these under /%s/models/p4/\n", store.label());
   Serial.println("    human_face_detect_msr_s8_v1.espdl");
@@ -463,24 +463,25 @@ static void printUploadHelp(const IPAddress &ip) {
 }
 
 static bool startCameraFace() {
-  if (!cam.begin(ESP32P4_BOARD_GUITION_M3)) {
+  if (!cam.begin(esp32csi_cam_config())) {
     Serial.println("camera FAILED");
     return false;
   }
 
   if (!h264.begin(ENC_W, ENC_H, 30, ENC_BITRATE)) {
-    Serial.println("H264 begin FAILED — Capture Img still works; Record disabled");
+    Serial.println("H264 begin FAILED - Capture Img still works; Record disabled");
   }
   if (!mic.begin(16000)) {
-    Serial.println("Mic FAILED — recordings will be video-only");
+    Serial.println("Mic FAILED - recordings will be video-only");
   }
 
-  if (!face.begin(ESP32P4_FaceDetect::MSRMNP_S8_V1, kDb, kNames)) {
-    Serial.printf("FaceAi.begin FAILED — check models on %s (vfs %s)\n", store.label(),
-                  store.vfsRoot());
-    return false;
+  if (!face.begin(ESP32P4_FACE_MSRMNP_S8_V1, kDb, kNames)) {
+    Serial.printf("FaceAi.begin FAILED — camera UI still up, upload via Files :%u\n",
+                  (unsigned)WFM_UI_PORT);
+    stream.setModelMissingNote(store.volumeSummary(), "Face models");
+  } else {
+    face_ready = true;
   }
-  face_ready = true;
 
   stream.begin(&cam, CAM_UI_PORT, 38);
   stream.setFramesize(ESP32P4_STREAM_HD);  // default until settings load
@@ -512,42 +513,21 @@ static bool startCameraFace() {
   Serial.printf("FR     ready=%d feats=%d db=%s\n", face.recognitionReady() ? 1 : 0, face.featCount(),
                 kDb);
   if (!store.exists(kMfn)) {
-    Serial.println("WARN: MFN missing — detect works; enroll/recognize needs human_face_feat_mfn_s8_v1.espdl");
+    Serial.println("WARN: MFN missing - detect works; enroll/recognize needs human_face_feat_mfn_s8_v1.espdl");
   }
   return true;
 }
 
-static void addSecondaryVolumes() {
-  if (!wfm) return;
-  // If primary is flash, also expose SD when a card is present.
-  if (store.kind() != ESP32P4_STORAGE_SD) {
-    if (!sd.mounted()) sd.begin(ESP32P4_BOARD_GUITION_M3);
-    if (sd.mounted()) {
-      static WfmStorageFS sdVol(
-          sd.fs(), "SD", []() -> uint64_t { return sd.totalBytes(); },
-          []() -> uint64_t { return sd.usedBytes(); });
-      sdVol.begin();
-      wfm->addVolume("SD", sdVol);
-      Serial.println("WFM: added secondary volume SD");
-    }
-  } else {
-#if __has_include(<FFat.h>)
-    static WfmStorageFFat ffatVol(false);
-    if (ffatVol.begin()) {
-      wfm->addVolume("FFat", ffatVol);
-      Serial.println("WFM: added secondary volume FFat");
-    }
-#endif
-  }
-}
+ESP32P4_Debug dbg;
 
 void setup() {
   Serial.begin(115200);
   delay(1200);
   Serial.println("=== 21_EthFaceWeb (vendored ESP-DL) ===");
-  Serial.printf("APP_STORAGE pref=%s\n", ESP32P4_StoragePref::kindName(APP_STORAGE));
+  dbg.begin(APP_NAME, APP_DEBUG);
+  Serial.printf("APP_STORAGE pref=%s\n", store.kindName(APP_STORAGE));
 
-  if (!store.begin(APP_STORAGE, false, &sd, ESP32P4_BOARD_GUITION_M3)) {
+  if (!store.begin(APP_STORAGE, false, &sd, (esp32p4_board_t)ESP32CSI_BOARD)) {
     Serial.println("Storage mount FAILED (SD / FFat / LittleFS / SPIFFS)");
     while (true) delay(1000);
   }
@@ -560,6 +540,7 @@ void setup() {
   primaryVol.begin();
   appVol = &primaryVol;
   wfm = &wfmMgr;
+  store.attachToWfm(*wfm);
 
   ensureModelDirs();
   ensureFaceStore();
@@ -567,18 +548,8 @@ void setup() {
   if (!startEthAndWfm()) {
     while (true) delay(1000);
   }
-  addSecondaryVolumes();
 
   IPAddress ip = ETH.localIP();
-
-  if (!modelsPresent()) {
-    printUploadHelp(ip);
-    while (!modelsPresent()) {
-      wfm->loop();
-      delay(2);
-    }
-    Serial.printf("Models detected on %s.\n", store.label());
-  }
 
   if (!startCameraFace()) {
     while (true) {
@@ -589,16 +560,28 @@ void setup() {
 }
 
 void loop() {
-  if (face_ready) stream.loop();
+  stream.loop();
   if (wfm) wfm->loop();
 
-  // Backup path: save settings when face hook isn't running (detect off).
-  if (face_ready) {
-    auto &ui = stream.faceUi();
-    if (ui.settings_dirty) {
-      ui.settings_dirty = false;
-      saveSettings();
+  if (!face_ready && modelsPresent()) {
+    static uint32_t last_try = 0;
+    if (millis() - last_try >= 1500) {
+      last_try = millis();
+      stream.setEncodePaused(true);
+      if (face.begin(ESP32P4_FACE_MSRMNP_S8_V1, kDb, kNames)) {
+        face_ready = true;
+        stream.setPreviewNote("");
+        Serial.println("FaceAi: model loaded");
+      }
+      stream.setEncodePaused(false);
     }
+  }
+
+  // Backup path: save settings when face hook isn't running (detect off).
+  auto &ui = stream.faceUi();
+  if (ui.settings_dirty) {
+    ui.settings_dirty = false;
+    saveSettings();
   }
 
   static uint32_t last = 0;

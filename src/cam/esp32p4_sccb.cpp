@@ -1,10 +1,29 @@
 #include "cam/esp32p4_sccb.h"
 
 #include <Arduino.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 static TwoWire *s_sccb = &Wire;
+static SemaphoreHandle_t s_mu = nullptr;
+
+static SemaphoreHandle_t sccb_mu() {
+  if (!s_mu) s_mu = xSemaphoreCreateRecursiveMutex();
+  return s_mu;
+}
 
 void esp32p4_sccb_set_bus(TwoWire *bus) { s_sccb = bus ? bus : &Wire; }
+
+void esp32p4_sccb_lock(TwoWire *bus) {
+  SemaphoreHandle_t mu = sccb_mu();
+  if (mu) xSemaphoreTakeRecursive(mu, portMAX_DELAY);
+  s_sccb = bus ? bus : &Wire;
+}
+
+void esp32p4_sccb_unlock() {
+  SemaphoreHandle_t mu = sccb_mu();
+  if (mu) xSemaphoreGiveRecursive(mu);
+}
 
 TwoWire &esp32p4_sccb_bus() { return s_sccb ? *s_sccb : Wire; }
 
@@ -58,4 +77,11 @@ bool esp32p4_sccb_read8_reg8(uint8_t addr7, uint8_t reg, uint8_t *val) {
   if (bus().requestFrom((int)addr7, 1) != 1) return false;
   *val = (uint8_t)bus().read();
   return true;
+}
+
+bool esp32p4_sccb_write_be16(uint8_t addr7, uint16_t val) {
+  bus().beginTransmission(addr7);
+  bus().write((uint8_t)(val >> 8));
+  bus().write((uint8_t)(val & 0xff));
+  return bus().endTransmission() == 0;
 }

@@ -36,6 +36,7 @@ static bool configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p4_cam_m
     mode_out->width = 1280; mode_out->height = 720; mode_out->lanes = 2;
     mode_out->lane_mbps = 400; mode_out->in_fmt = ESP32P4_CAM_IN_RAW8; mode_out->bayer = ESP32P4_BAYER_BGGR;
     mode_out->framesize_tag = ESP32P4_FRAMESIZE_HD; mode_out->regs = regs; mode_out->regs_count = n;
+    mode_out->fps = 50;
   }
   return true;
 }
@@ -52,6 +53,7 @@ namespace os02n10_drv {
 #include "cam/sensors/os02n10/os02n10_types.h"
 #include "cam/sensors/os02n10/os02n10_regs.h"
 #include "cam/sensors/os02n10/os02n10_mipi_2lane_24Minput_1920x1080_raw10_25fps.h"
+#include "cam/sensors/os02n10/os02n10_mipi_2lane_24Minput_1280x720_raw10_50fps.h"
 static const uint8_t kAddrs[] = {0x3C, 0x3D, 0};
 static bool detect(uint8_t *addr7_out) {
   for (const uint8_t *p = kAddrs; *p; ++p) {
@@ -78,19 +80,29 @@ static bool stream_off(uint8_t addr7) {
          esp32p4_sccb_write8_reg8(addr7, 0xfb, 0x00);
 }
 static bool configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p4_cam_mode_t *mode_out) {
-  (void)want;
   stream_off(addr7);
   delay(5);
-  const esp32p4_reg8a8_t *regs =
-      (const esp32p4_reg8a8_t *)os02n10_mipi_2lane_24Minput_1920x1080_raw10_25fps;
-  size_t n = sizeof(os02n10_mipi_2lane_24Minput_1920x1080_raw10_25fps) /
-             sizeof(os02n10_mipi_2lane_24Minput_1920x1080_raw10_25fps[0]);
+  const bool hd = (want == ESP32P4_FRAMESIZE_HD);
+  const esp32p4_reg8a8_t *regs = hd ? (const esp32p4_reg8a8_t *)os02n10_mipi_2lane_24Minput_1280x720_raw10_50fps
+                                    : (const esp32p4_reg8a8_t *)os02n10_mipi_2lane_24Minput_1920x1080_raw10_25fps;
+  size_t n = hd ? sizeof(os02n10_mipi_2lane_24Minput_1280x720_raw10_50fps) /
+                      sizeof(os02n10_mipi_2lane_24Minput_1280x720_raw10_50fps[0])
+                : sizeof(os02n10_mipi_2lane_24Minput_1920x1080_raw10_25fps) /
+                      sizeof(os02n10_mipi_2lane_24Minput_1920x1080_raw10_25fps[0]);
   if (!esp32p4_cam_write_reg8a8_table(addr7, regs, n)) return false;
   if (mode_out) {
-    mode_out->name = "OS02N10 1920x1080";
-    mode_out->width = 1920; mode_out->height = 1080; mode_out->lanes = 2;
+    if (hd) {
+      mode_out->name = "OS02N10 1280x720";
+      mode_out->width = 1280; mode_out->height = 720; mode_out->fps = 50;
+      mode_out->framesize_tag = ESP32P4_FRAMESIZE_HD;
+    } else {
+      mode_out->name = "OS02N10 1920x1080";
+      mode_out->width = 1920; mode_out->height = 1080; mode_out->fps = 25;
+      mode_out->framesize_tag = ESP32P4_FRAMESIZE_1080P;
+    }
+    mode_out->lanes = 2;
     mode_out->lane_mbps = 480; mode_out->in_fmt = ESP32P4_CAM_IN_RAW10; mode_out->bayer = ESP32P4_BAYER_BGGR;
-    mode_out->framesize_tag = ESP32P4_FRAMESIZE_1080P; mode_out->regs = nullptr; mode_out->regs_count = n;
+    mode_out->regs = nullptr; mode_out->regs_count = n;
   }
   return true;
 }
@@ -131,6 +143,7 @@ static bool configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p4_cam_m
     mode_out->width = 640; mode_out->height = 480; mode_out->lanes = 2;
     mode_out->lane_mbps = 360; mode_out->in_fmt = ESP32P4_CAM_IN_RAW8; mode_out->bayer = ESP32P4_BAYER_BGGR;
     mode_out->framesize_tag = ESP32P4_FRAMESIZE_VGA; mode_out->regs = regs; mode_out->regs_count = n;
+    mode_out->fps = 50;
   }
   return true;
 }
@@ -146,7 +159,11 @@ const esp32p4_cam_sensor_ops_t *sc035hgs_sensor_ops(void) { return &sc035hgs_drv
 namespace ov2710_drv {
 #include "cam/sensors/ov2710/ov2710_types.h"
 #include "cam/sensors/ov2710/ov2710_regs.h"
+#ifndef BIT
+#define BIT(n) (1u << (n))
+#endif
 #include "cam/sensors/ov2710/ov2710_mipi_1lane_24Minput_1920x1080_raw10_25fps.h"
+#include "cam/sensors/ov2710/ov2710_mipi_1lane_24Minput_1280x720_raw10_25fps.h"
 static const uint8_t kAddrs[] = {0x36, 0};
 static bool detect(uint8_t *addr7_out) {
   for (const uint8_t *p = kAddrs; *p; ++p) {
@@ -169,22 +186,32 @@ static bool stream_off(uint8_t addr7) {
          esp32p4_sccb_write8(addr7, OV2710_REG_FRAME_CTRL02, 0x0f);
 }
 static bool configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p4_cam_mode_t *mode_out) {
-  (void)want;
   stream_off(addr7);
   delay(5);
-  const esp32p4_reg8_t *regs = (const esp32p4_reg8_t *)ov2710_mipi_1lane_24Minput_1920x1080_raw10_25fps;
+  const bool hd = (want == ESP32P4_FRAMESIZE_HD);
+  const esp32p4_reg8_t *regs = hd ? (const esp32p4_reg8_t *)ov2710_mipi_1lane_24Minput_1280x720_raw10_25fps
+                                  : (const esp32p4_reg8_t *)ov2710_mipi_1lane_24Minput_1920x1080_raw10_25fps;
   size_t n = esp32p4_cam_reg8_count(regs);
   if (!esp32p4_cam_write_reg8_table(addr7, regs, n)) return false;
   if (mode_out) {
-    mode_out->name = "OV2710 1920x1080";
-    mode_out->width = 1920; mode_out->height = 1080; mode_out->lanes = 1;
+    if (hd) {
+      mode_out->name = "OV2710 1280x720";
+      mode_out->width = 1280; mode_out->height = 720;
+      mode_out->framesize_tag = ESP32P4_FRAMESIZE_HD;
+    } else {
+      mode_out->name = "OV2710 1920x1080";
+      mode_out->width = 1920; mode_out->height = 1080;
+      mode_out->framesize_tag = ESP32P4_FRAMESIZE_1080P;
+    }
+    mode_out->lanes = 1;
     mode_out->lane_mbps = 800; mode_out->in_fmt = ESP32P4_CAM_IN_RAW10; mode_out->bayer = ESP32P4_BAYER_BGGR;
-    mode_out->framesize_tag = ESP32P4_FRAMESIZE_1080P; mode_out->regs = regs; mode_out->regs_count = n;
+    mode_out->regs = regs; mode_out->regs_count = n;
+    mode_out->fps = 25;
   }
   return true;
 }
 static const esp32p4_cam_sensor_ops_t kOps = {
-  ESP32P4_SENSOR_OV2710, "OV2710", ESP32P4_CAM_SUPPORT_EXPERIMENTAL, kAddrs, detect, configure, stream_on, stream_off,
+  ESP32P4_SENSOR_OV2710, "OV2710", ESP32P4_CAM_SUPPORT_FULL, kAddrs, detect, configure, stream_on, stream_off,
   nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr
 };
 }  // namespace
@@ -220,6 +247,7 @@ static bool configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p4_cam_m
     mode_out->width = 1280; mode_out->height = 720; mode_out->lanes = 1;
     mode_out->lane_mbps = 360; mode_out->in_fmt = ESP32P4_CAM_IN_RAW8; mode_out->bayer = ESP32P4_BAYER_BGGR;
     mode_out->framesize_tag = ESP32P4_FRAMESIZE_HD; mode_out->regs = regs; mode_out->regs_count = n;
+    mode_out->fps = 30;
   }
   return true;
 }
@@ -263,6 +291,7 @@ static bool configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p4_cam_m
     mode_out->width = 1280; mode_out->height = 720; mode_out->lanes = 1;
     mode_out->lane_mbps = 480; mode_out->in_fmt = ESP32P4_CAM_IN_RAW10; mode_out->bayer = ESP32P4_BAYER_BGGR;
     mode_out->framesize_tag = ESP32P4_FRAMESIZE_HD; mode_out->regs = regs; mode_out->regs_count = n;
+    mode_out->fps = 30;
   }
   return true;
 }
@@ -315,11 +344,12 @@ static bool configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p4_cam_m
     mode_out->width = 640; mode_out->height = 480; mode_out->lanes = 1;
     mode_out->lane_mbps = 240; mode_out->in_fmt = ESP32P4_CAM_IN_RAW8; mode_out->bayer = ESP32P4_BAYER_BGGR;
     mode_out->framesize_tag = ESP32P4_FRAMESIZE_VGA; mode_out->regs = nullptr; mode_out->regs_count = n;
+    mode_out->fps = 60;
   }
   return true;
 }
 static const esp32p4_cam_sensor_ops_t kOps = {
-  ESP32P4_SENSOR_SC030IOT, "SC030IOT", ESP32P4_CAM_SUPPORT_EXPERIMENTAL, kAddrs, detect, configure, stream_on, stream_off,
+  ESP32P4_SENSOR_SC030IOT, "SC030IOT", ESP32P4_CAM_SUPPORT_FULL, kAddrs, detect, configure, stream_on, stream_off,
   nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr
 };
 }  // namespace
@@ -355,11 +385,12 @@ static bool configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p4_cam_m
     mode_out->width = 960; mode_out->height = 1280; mode_out->lanes = 1;
     mode_out->lane_mbps = 800; mode_out->in_fmt = ESP32P4_CAM_IN_RAW10; mode_out->bayer = ESP32P4_BAYER_BGGR;
     mode_out->framesize_tag = ESP32P4_FRAMESIZE_1080P; mode_out->regs = regs; mode_out->regs_count = n;
+    mode_out->fps = 30;
   }
   return true;
 }
 static const esp32p4_cam_sensor_ops_t kOps = {
-  ESP32P4_SENSOR_OS04C10, "OS04C10", ESP32P4_CAM_SUPPORT_EXPERIMENTAL, kAddrs, detect, configure, stream_on, stream_off,
+  ESP32P4_SENSOR_OS04C10, "OS04C10", ESP32P4_CAM_SUPPORT_FULL, kAddrs, detect, configure, stream_on, stream_off,
   nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr
 };
 }  // namespace
@@ -404,11 +435,12 @@ static bool configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p4_cam_m
     mode_out->width = 800; mode_out->height = 600; mode_out->lanes = 1;
     mode_out->lane_mbps = 400; mode_out->in_fmt = ESP32P4_CAM_IN_RAW8; mode_out->bayer = ESP32P4_BAYER_BGGR;
     mode_out->framesize_tag = ESP32P4_FRAMESIZE_SVGA; mode_out->regs = nullptr; mode_out->regs_count = n;
+    mode_out->fps = 50;
   }
   return true;
 }
 static const esp32p4_cam_sensor_ops_t kOps = {
-  ESP32P4_SENSOR_STI2250, "STI2250", ESP32P4_CAM_SUPPORT_EXPERIMENTAL, kAddrs, detect, configure, stream_on, stream_off,
+  ESP32P4_SENSOR_STI2250, "STI2250", ESP32P4_CAM_SUPPORT_FULL, kAddrs, detect, configure, stream_on, stream_off,
   nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr
 };
 }  // namespace
@@ -446,12 +478,103 @@ static bool configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p4_cam_m
     mode_out->width = 1024; mode_out->height = 600; mode_out->lanes = 2;
     mode_out->lane_mbps = 400; mode_out->in_fmt = ESP32P4_CAM_IN_RAW8; mode_out->bayer = ESP32P4_BAYER_BGGR;
     mode_out->framesize_tag = ESP32P4_FRAMESIZE_SVGA; mode_out->regs = regs; mode_out->regs_count = n;
+    mode_out->fps = 15;
   }
   return true;
 }
 static const esp32p4_cam_sensor_ops_t kOps = {
-  ESP32P4_SENSOR_MIRA220, "MIRA220", ESP32P4_CAM_SUPPORT_EXPERIMENTAL, kAddrs, detect, configure, stream_on, stream_off,
+  ESP32P4_SENSOR_MIRA220, "MIRA220", ESP32P4_CAM_SUPPORT_FULL, kAddrs, detect, configure, stream_on, stream_off,
   nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr
 };
 }  // namespace
 const esp32p4_cam_sensor_ops_t *mira220_sensor_ops(void) { return &mira220_drv::kOps; }
+
+
+/* ---- SC2331 pid=0xcb5c ---- */
+namespace sc2331_drv {
+#include "cam/sensors/sc2331/sc2331_types.h"
+#include "cam/sensors/sc2331/sc2331_regs.h"
+#include "cam/sensors/sc2331/sc2331_mipi_2lane_24Minput_1920x1080_raw10_25fps.h"
+static const uint8_t kAddrs[] = {0x30, 0x32, 0};
+static bool detect(uint8_t *addr7_out) {
+  for (const uint8_t *p = kAddrs; *p; ++p) {
+    if (!esp32p4_sccb_ping(*p)) continue;
+    uint16_t got = 0;
+    if (!esp32p4_sccb_read16(*p, SC2331_REG_SENSOR_ID_H, &got)) continue;
+    if (got == 0xcb5c) { if (addr7_out) *addr7_out = *p; return true; }
+  }
+  return false;
+}
+static bool stream_on(uint8_t addr7) { return esp32p4_sccb_write8(addr7, SC2331_REG_SLEEP_MODE, 0x01); }
+static bool stream_off(uint8_t addr7) { return esp32p4_sccb_write8(addr7, SC2331_REG_SLEEP_MODE, 0x00); }
+static bool configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p4_cam_mode_t *mode_out) {
+  (void)want;
+  stream_off(addr7);
+  delay(5);
+  const esp32p4_reg8_t *regs =
+      (const esp32p4_reg8_t *)sc2331_mipi_2lane_24Minput_1920x1080_raw10_25fps;
+  size_t n = esp32p4_cam_reg8_count(regs);
+  if (!esp32p4_cam_write_reg8_table(addr7, regs, n)) return false;
+  if (mode_out) {
+    mode_out->name = "SC2331 1920x1080 RAW10";
+    mode_out->width = 1920; mode_out->height = 1080; mode_out->lanes = 2;
+    mode_out->lane_mbps = 315; mode_out->in_fmt = ESP32P4_CAM_IN_RAW10; mode_out->bayer = ESP32P4_BAYER_BGGR;
+    mode_out->framesize_tag = ESP32P4_FRAMESIZE_1080P; mode_out->regs = regs; mode_out->regs_count = n;
+    mode_out->fps = 25;
+  }
+  return true;
+}
+static const esp32p4_cam_sensor_ops_t kOps = {
+  ESP32P4_SENSOR_SC2331, "SC2331", ESP32P4_CAM_SUPPORT_FULL, kAddrs, detect, configure, stream_on, stream_off,
+  nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr
+};
+}  // namespace
+const esp32p4_cam_sensor_ops_t *sc2331_sensor_ops(void) { return &sc2331_drv::kOps; }
+
+
+/* ---- GC2607 pid=0x2607 ---- */
+namespace gc2607_drv {
+#include "cam/sensors/gc2607/gc2607_types.h"
+#include "cam/sensors/gc2607/gc2607_regs.h"
+#include "cam/sensors/gc2607/gc2607_mipi_2lane_24Minput_raw10_1920x1080_25fps.h"
+static const uint8_t kAddrs[] = {0x37, 0};
+static const esp32p4_reg8_t kStreamOff[] = {
+    {0x03fe, 0x00}, {0x0117, 0x01}, {0x0229, 0x03}, {0x0100, 0x81}, {0xffff, 0x00},
+};
+static const esp32p4_reg8_t kStreamOn[] = {
+    {0x03fe, 0x20}, {0x03fe, 0x00}, {0x0117, 0x91}, {0x0229, 0x02}, {0x0100, 0x00}, {0xffff, 0x00},
+};
+static bool detect(uint8_t *addr7_out) {
+  for (const uint8_t *p = kAddrs; *p; ++p) {
+    if (!esp32p4_sccb_ping(*p)) continue;
+    uint16_t got = 0;
+    if (!esp32p4_sccb_read16(*p, GC2607_REG_ID_HIGH, &got)) continue;
+    if (got == 0x2607) { if (addr7_out) *addr7_out = *p; return true; }
+  }
+  return false;
+}
+static bool stream_on(uint8_t addr7) { return esp32p4_cam_write_reg8_table(addr7, kStreamOn, 0); }
+static bool stream_off(uint8_t addr7) { return esp32p4_cam_write_reg8_table(addr7, kStreamOff, 0); }
+static bool configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p4_cam_mode_t *mode_out) {
+  (void)want;
+  stream_off(addr7);
+  delay(5);
+  const esp32p4_reg8_t *regs =
+      (const esp32p4_reg8_t *)gc2607_mipi_2lane_24Minput_raw10_1920x1080_25fps;
+  size_t n = esp32p4_cam_reg8_count(regs);
+  if (!esp32p4_cam_write_reg8_table(addr7, regs, n)) return false;
+  if (mode_out) {
+    mode_out->name = "GC2607 1920x1080 RAW10";
+    mode_out->width = 1920; mode_out->height = 1080; mode_out->lanes = 2;
+    mode_out->lane_mbps = 672; mode_out->in_fmt = ESP32P4_CAM_IN_RAW10; mode_out->bayer = ESP32P4_BAYER_GRBG;
+    mode_out->framesize_tag = ESP32P4_FRAMESIZE_1080P; mode_out->regs = regs; mode_out->regs_count = n;
+    mode_out->fps = 25;
+  }
+  return true;
+}
+static const esp32p4_cam_sensor_ops_t kOps = {
+  ESP32P4_SENSOR_GC2607, "GC2607", ESP32P4_CAM_SUPPORT_FULL, kAddrs, detect, configure, stream_on, stream_off,
+  nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr
+};
+}  // namespace
+const esp32p4_cam_sensor_ops_t *gc2607_sensor_ops(void) { return &gc2607_drv::kOps; }

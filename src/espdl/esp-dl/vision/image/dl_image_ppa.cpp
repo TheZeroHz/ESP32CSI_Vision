@@ -154,3 +154,4 @@ esp_err_t resize_ppa(const img_t &src_img,
 } // namespace image
 } // namespace dl
 #endif
+

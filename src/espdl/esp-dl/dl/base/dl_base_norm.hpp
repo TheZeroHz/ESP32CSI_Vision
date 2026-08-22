@@ -29,3 +29,4 @@ void rms_norm(int16_t *output, int16_t *input, float *scale, float *rms, int n);
 
 } // namespace base
 } // namespace dl
+

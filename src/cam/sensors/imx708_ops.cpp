@@ -17,6 +17,7 @@ static bool configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p4_cam_m
     m.height = 1296;
     m.lane_mbps = 800;
     m.framesize_tag = ESP32P4_FRAMESIZE_2304X1296;
+    m.fps = 30;
     ok = imx708_configure_2304x1296(addr7);
   } else {
     m.name = "IMX708 1280x720 RAW10";
@@ -24,6 +25,7 @@ static bool configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p4_cam_m
     m.height = 720;
     m.lane_mbps = 400;
     m.framesize_tag = ESP32P4_FRAMESIZE_HD;
+    m.fps = 30;
     ok = imx708_configure_hd720(addr7);
   }
   if (ok && mode_out) *mode_out = m;

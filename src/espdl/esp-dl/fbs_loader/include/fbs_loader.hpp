@@ -296,3 +296,4 @@ FbsModel *create_fbs_model(const char *fbs_buf,
                            bool param_copy);
 
 } // namespace fbs
+

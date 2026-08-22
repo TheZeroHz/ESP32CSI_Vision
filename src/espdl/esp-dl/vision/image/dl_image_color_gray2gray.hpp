@@ -56,3 +56,4 @@ struct Gray2Gray<ExtraProcess> {
 };
 } // namespace image
 } // namespace dl
+

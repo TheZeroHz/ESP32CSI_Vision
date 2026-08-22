@@ -95,3 +95,4 @@ void max_pool2d<int8_t>(void *args_ptr)
 
 } // namespace base
 } // namespace dl
+

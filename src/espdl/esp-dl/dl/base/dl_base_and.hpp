@@ -21,3 +21,4 @@ void elemwise_and(elemwiseArgsType<int16_t> *args);
 
 } // namespace base
 } // namespace dl
+

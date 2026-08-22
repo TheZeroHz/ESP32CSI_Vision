@@ -78,3 +78,4 @@ void elemwise_loop_1d(elemwiseArgsType<in_feature_t, out_feature_t> *args,
 
 } // namespace base
 } // namespace dl
+

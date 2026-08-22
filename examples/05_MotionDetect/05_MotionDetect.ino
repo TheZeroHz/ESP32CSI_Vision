@@ -1,13 +1,24 @@
-#include <ESP32CSI_Vision.h>
+#include "board_config.h"
+
+#ifndef APP_NAME
+#define APP_NAME "05_MotionDetect"
+#endif
+#ifndef APP_DEBUG
+#define APP_DEBUG ESP32P4_DBG_CAM
+#endif
+
 
 ESP32P4_Camera cam;
 ESP32P4_Dsp dsp;
+
+ESP32P4_Debug dbg;
 
 void setup() {
   Serial.begin(115200);
   delay(1200);
   Serial.println("=== 05_MotionDetect ===");
-  if (!cam.begin(ESP32P4_BOARD_GUITION_M3)) {
+  dbg.begin(APP_NAME, APP_DEBUG);
+  if (!cam.begin(esp32csi_cam_config())) {
     Serial.println("camera FAILED");
     while (true) delay(1000);
   }
@@ -15,6 +26,7 @@ void setup() {
 }
 
 void loop() {
+  dbg.poll();
   camera_fb_t *fb = cam.capture();
   if (!fb) return;
   esp32p4_motion_t m{};

@@ -349,3 +349,4 @@ Matrix<float> get_similarity_transform(Matrix<float> &source_coord, Matrix<float
 Matrix<float> get_perspective_transform(Matrix<float> &source_coord, Matrix<float> &dest_coord);
 } // namespace math
 } // namespace dl
+

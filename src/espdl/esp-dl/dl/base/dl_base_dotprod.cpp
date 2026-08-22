@@ -117,3 +117,4 @@ void dotprod(float *input0_ptr, float *input1_ptr, float *output_ptr, int length
 
 } // namespace base
 } // namespace dl
+

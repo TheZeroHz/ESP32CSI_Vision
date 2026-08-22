@@ -430,6 +430,10 @@ void Model::print()
 
 void Model::minimize()
 {
+    if (!m_fbs_model || !m_model_context) {
+        ESP_LOGW(TAG, "minimize() skipped (model not loaded)");
+        return;
+    }
     ESP_LOGW(TAG, "minimize() will delete unused inference variables, breaking model testing/debugging.");
 
     m_internal_size += heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
@@ -810,3 +814,4 @@ void Model::reset()
 }
 
 } // namespace dl
+

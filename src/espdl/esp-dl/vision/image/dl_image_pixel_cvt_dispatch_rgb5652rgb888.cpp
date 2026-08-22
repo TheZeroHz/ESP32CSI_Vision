@@ -71,3 +71,4 @@ template void pixel_cvt_dispatch_rgb5652rgb888<ImageTransformer::TransformNNFunc
     const ImageTransformer::TransformNNFunctor<false> &func, pix_cvt_t pix_cvt_type, const pix_cvt_param_t &param);
 } // namespace image
 } // namespace dl
+

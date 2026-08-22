@@ -16,3 +16,4 @@ template <typename feature_t, typename bias_t, typename buffer_t>
 void conv2d(void *const args_ptr);
 } // namespace base
 } // namespace dl
+

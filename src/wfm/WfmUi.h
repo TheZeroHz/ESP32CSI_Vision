@@ -28,6 +28,8 @@ button,input{font:inherit}
 .titlebar .spacer{flex:1}
 .gh-link{display:inline-flex;align-items:center;gap:6px;color:var(--ink);text-decoration:none;font-size:11px;font-weight:600;padding:3px 8px;border-radius:4px;border:1px solid transparent}
 .gh-link:hover{background:var(--hover);border-color:var(--line2);color:#24292f}
+.gh-link.home-cta{background:var(--acc);color:#fff;border-color:var(--acc);padding:6px 14px;font-weight:750;letter-spacing:.02em}
+.gh-link.home-cta:hover{background:var(--acc2);color:#fff;border-color:var(--acc2)}
 .gh-link svg{width:14px;height:14px;fill:currentColor;flex:0 0 auto}
 .statuspill{color:var(--muted);font-size:11px;white-space:nowrap}
 .ribbon{display:flex;flex-wrap:wrap;gap:2px 0;align-items:center;min-height:40px;padding:4px 8px;background:#fff;border-bottom:1px solid var(--line)}
@@ -195,7 +197,7 @@ button,input{font:inherit}
     <div class="appico"><svg viewBox="0 0 16 16"><path d="M2 3h5l1 1h6v9H2z"/></svg></div>
     <h1 id="winTitle">Web File Manager</h1>
     <div class="spacer"></div>
-    <a id="homeLink" class="gh-link" href="#" style="display:none" title="Back to camera UI">Camera</a>
+    <a id="homeLink" class="gh-link home-cta" href="#" style="display:none" title="Back to camera UI">Camera</a>
     <a class="gh-link" href="https://github.com/TheZeroHz" target="_blank" rel="noopener noreferrer" title="GitHub - TheZeroHz">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.6 7.6 0 0 1 8 3.58c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
       <span>TheZeroHz</span>
@@ -827,6 +829,23 @@ function bindMediaPlayer(player, token, kind, modalEl){
 
 async function playMediaPreview(item, openModal){
   if(!item||item.dir||item.volume) return;
+  if((item.size|0)===0){
+    stopPreview();
+    var msg='This file is empty (0 bytes). The recording did not finish saving — stay on Camera until the save % completes, then Record again.';
+    var stage=document.getElementById('pvStage');
+    stage.classList.add('light');
+    stage.innerHTML='<div class="hint">'+esc(msg)+'</div>';
+    document.getElementById('pvTitle').textContent=item.name;
+    document.getElementById('pvMeta').textContent='Empty file | 0 B';
+    if(openModal){
+      openModalShell(item);
+      var modal=document.getElementById('modalBody');
+      modal.classList.add('light');
+      modal.innerHTML='<div class="hint">'+esc(msg)+'</div>';
+    }
+    setPreviewBusy(false,'Empty file');
+    return;
+  }
   stopPreview();
   var token=++previewToken;
   var kind=kindOf(item.name,false);
@@ -877,13 +896,13 @@ async function playMediaPreview(item, openModal){
     // One stream only — dual video tags stall the single file server.
     if(openModal){
       modal.classList.remove('light');
-      modal.innerHTML='<video id="modalPlayer" controls autoplay playsinline preload="auto" src="'+view+'"></video>';
+      modal.innerHTML='<video id="modalPlayer" controls autoplay playsinline preload="metadata" src="'+view+'" type="video/mp4"></video>';
       stage.classList.remove('light');
       stage.innerHTML='<div class="hint">Playing in popup. Cancel preview to free the stream.</div>';
       bindMediaPlayer(document.getElementById('modalPlayer'), token, 'vid', modal);
     }else{
       stage.classList.remove('light');
-      stage.innerHTML='<video id="sidePlayer" controls autoplay playsinline preload="auto" src="'+view+'"></video>';
+      stage.innerHTML='<video id="sidePlayer" controls autoplay playsinline preload="metadata" src="'+view+'" type="video/mp4"></video>';
       bindMediaPlayer(document.getElementById('sidePlayer'), token, 'vid', null);
     }
     setPreviewBusy(true,'Buffering... Cancel anytime');

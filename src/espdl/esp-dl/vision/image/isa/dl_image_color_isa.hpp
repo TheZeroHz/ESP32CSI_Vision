@@ -278,3 +278,4 @@ void resize_nn_simd_helper_hsv2hsv_mask0(
 void resize_nn_simd_helper_hsv2hsv_mask1(
     uint8_t **src, int *offsets, uint8_t *dst, int n, const uint8_t *hsv_min, const uint8_t *hsv_max);
 }
+

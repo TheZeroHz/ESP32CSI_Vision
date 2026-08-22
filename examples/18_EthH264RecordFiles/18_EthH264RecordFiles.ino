@@ -28,17 +28,17 @@
 
 #include <Arduino.h>
 
-#ifndef ETH_PHY_MDC
-#define ETH_PHY_TYPE  ETH_PHY_IP101
-#define ETH_PHY_ADDR  1
-#define ETH_PHY_MDC   31
-#define ETH_PHY_MDIO  52
-#define ETH_PHY_POWER 51
-#define ETH_CLK_MODE  EMAC_CLK_EXT_IN
+
+#include "board_config.h"
+#include <ETH.h>
+
+#ifndef APP_NAME
+#define APP_NAME "18_EthH264RecordFiles"
+#endif
+#ifndef APP_DEBUG
+#define APP_DEBUG ESP32P4_DBG_LIVE | ESP32P4_DBG_H264 | ESP32P4_DBG_AUDIO
 #endif
 
-#include <ETH.h>
-#include <ESP32CSI_Vision.h>
 
 static const uint16_t ENC_W = 640;
 static const uint16_t ENC_H = 480;
@@ -84,19 +84,22 @@ void onEthEvent(arduino_event_id_t event) {
   }
 }
 
+ESP32P4_Debug dbg;
+
 void setup() {
   Serial.begin(115200);
   delay(1200);
   Serial.println("=== 18_EthH264RecordFiles (camera + WebFileManager) ===");
-  Serial.printf("APP_STORAGE pref=%s\n", ESP32P4_StoragePref::kindName(APP_STORAGE));
+  dbg.begin(APP_NAME, APP_DEBUG);
+  Serial.printf("APP_STORAGE pref=%s\n", store.kindName(APP_STORAGE));
 
-  if (!cam.begin(ESP32P4_BOARD_GUITION_M3)) {
+  if (!cam.begin(esp32csi_cam_config())) {
     Serial.println("camera FAILED");
     while (true) delay(1000);
   }
 
-  if (!store.begin(APP_STORAGE, false, &sd, ESP32P4_BOARD_GUITION_M3)) {
-    Serial.println("Storage FAILED — insert SD or use a flash partition");
+  if (!store.begin(APP_STORAGE, false, &sd, (esp32p4_board_t)ESP32CSI_BOARD)) {
+    Serial.println("Storage FAILED - insert SD or use a flash partition");
     while (true) delay(1000);
   }
   static WfmStorageFS primaryVol(
@@ -115,13 +118,13 @@ void setup() {
   }
 
   if (!mic.begin(16000)) {
-    Serial.println("Mic FAILED — recording will be video-only");
+    Serial.println("Mic FAILED - recording will be video-only");
   }
 
   Network.onEvent(onEthEvent);
   if (!ETH.begin(ETH_PHY_TYPE, ETH_PHY_ADDR, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_POWER,
                  ETH_CLK_MODE)) {
-    Serial.println("ETH.begin FAILED — check cable/PHY pins");
+    Serial.println("ETH.begin FAILED - check cable/PHY pins");
     while (true) delay(1000);
   }
 
@@ -129,7 +132,7 @@ void setup() {
   uint32_t t0 = millis();
   while (!eth_ready && millis() - t0 < 30000) delay(200);
   if (!eth_ready) {
-    Serial.println("no Ethernet IP yet — check cable/router DHCP");
+    Serial.println("no Ethernet IP yet - check cable/router DHCP");
     while (true) delay(1000);
   }
 
@@ -164,7 +167,7 @@ void setup() {
   }
 #endif
   if (store.kind() != ESP32P4_STORAGE_SD) {
-    if (!sd.mounted()) sd.begin(ESP32P4_BOARD_GUITION_M3);
+    if (!sd.mounted()) sd.begin(esp32csi_sd_config());
     if (sd.mounted()) {
       static WfmStorageFS sdVol(
           sd.fs(), "SD", []() -> uint64_t { return sd.totalBytes(); },
@@ -176,13 +179,13 @@ void setup() {
   }
 
   IPAddress ip = ETH.localIP();
-  Serial.printf("Camera  http://%s/          (Files → :%u)\n", ip.toString().c_str(),
+  Serial.printf("Camera  http://%s/          (Files -> :%u)\n", ip.toString().c_str(),
                 (unsigned)WFM_UI_PORT);
   Serial.printf("stream  http://%s:%u/stream\n", ip.toString().c_str(),
                 (unsigned)stream.streamPort());
-  Serial.printf("Files   http://%s:%u/       (Camera → :%u)\n", ip.toString().c_str(),
+  Serial.printf("Files   http://%s:%u/       (Camera -> :%u)\n", ip.toString().c_str(),
                 (unsigned)WFM_UI_PORT, (unsigned)CAM_UI_PORT);
-  Serial.println("Record → /VIDEO/*.mp4 · Capture → /IMG/*.jpg");
+  Serial.println("Record -> /VIDEO/*.mp4 | Capture -> /IMG/*.jpg");
 }
 
 void loop() {

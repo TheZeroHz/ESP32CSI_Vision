@@ -314,3 +314,4 @@ template void elemwise_loop_1d(elemwiseArgsType<int16_t, bool> *args, ImplFunc_t
 
 } // namespace base
 } // namespace dl
+

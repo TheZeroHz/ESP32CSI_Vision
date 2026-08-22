@@ -33,13 +33,38 @@ static const esp32p4_reg8_t kMode1080[] = {
 };
 static bool stream_off(uint8_t a) { return esp32p4_sccb_write8(a, 0x0100, 0x00); }
 static bool stream_on(uint8_t a) { return esp32p4_sccb_write8(a, 0x0100, 0x01); }
+static bool wr16(uint8_t a, uint16_t reg, uint16_t v) {
+  return esp32p4_sccb_write8(a, reg, (uint8_t)(v >> 8)) &&
+         esp32p4_sccb_write8(a, (uint16_t)(reg + 1), (uint8_t)v);
+}
+static bool rd16(uint8_t a, uint16_t reg, uint16_t *v) {
+  uint8_t hi = 0, lo = 0;
+  if (!esp32p4_sccb_read8(a, reg, &hi) || !esp32p4_sccb_read8(a, (uint16_t)(reg + 1), &lo)) return false;
+  if (v) *v = (uint16_t)((hi << 8) | lo);
+  return true;
+}
+static bool set_exposure(uint8_t a, uint16_t lines) {
+  if (lines < 1) lines = 1;
+  return wr16(a, 0x015A, lines); /* COARSE_INTEGRATION_TIME */
+}
+static bool get_exposure(uint8_t a, uint16_t *lines) { return rd16(a, 0x015A, lines); }
+static bool set_gain(uint8_t a, uint16_t gain) {
+  if (gain > 232) gain = 232; /* analogue gain 1.0–10.66 */
+  return esp32p4_sccb_write8(a, 0x0157, (uint8_t)gain);
+}
+static bool get_gain(uint8_t a, uint16_t *gain) {
+  uint8_t v = 0;
+  if (!esp32p4_sccb_read8(a, 0x0157, &v)) return false;
+  if (gain) *gain = v;
+  return true;
+}
 static bool configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p4_cam_mode_t *mode_out) {
   (void)want;
   stream_off(addr7);
   delay(5);
   if (!esp32p4_cam_write_reg8_table(addr7, kMode1080, 0)) return false;
   if (mode_out) {
-    mode_out->name = "IMX219 1920x1080 RAW10 (exp)";
+    mode_out->name = "IMX219 1920x1080 RAW10";
     mode_out->width = 1920;
     mode_out->height = 1080;
     mode_out->lanes = 2;
@@ -49,39 +74,16 @@ static bool configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p4_cam_m
     mode_out->framesize_tag = ESP32P4_FRAMESIZE_1080P;
     mode_out->regs = kMode1080;
     mode_out->regs_count = esp32p4_cam_reg8_count(kMode1080);
+    mode_out->fps = 30;
   }
   return true;
 }
 static const esp32p4_cam_sensor_ops_t kOps = {
-    ESP32P4_SENSOR_IMX219, "IMX219", ESP32P4_CAM_SUPPORT_EXPERIMENTAL, kAddrs, detect, configure,
+    ESP32P4_SENSOR_IMX219, "IMX219", ESP32P4_CAM_SUPPORT_FULL, kAddrs, detect, configure,
     stream_on, stream_off, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+    set_exposure, get_exposure, set_gain, get_gain, nullptr, nullptr, nullptr};
 }  // namespace
 const esp32p4_cam_sensor_ops_t *imx219_sensor_ops(void) { return &imx219_drv::kOps; }
-
-namespace imx477_drv {
-static const uint8_t kAddrs[] = {0x1A, 0x10, 0};
-static bool detect(uint8_t *out) {
-  for (const uint8_t *p = kAddrs; *p; ++p) {
-    if (!esp32p4_sccb_ping(*p)) continue;
-    uint16_t id = 0;
-    if (!esp32p4_sccb_read16(*p, 0x0016, &id)) continue;
-    if (id == 0x0477) {
-      if (out) *out = *p;
-      return true;
-    }
-  }
-  return false;
-}
-static bool configure(uint8_t, esp32p4_cam_framesize_t, esp32p4_cam_mode_t *) { return false; }
-static bool stream_on(uint8_t) { return false; }
-static bool stream_off(uint8_t a) { return esp32p4_sccb_write8(a, 0x0100, 0x00); }
-static const esp32p4_cam_sensor_ops_t kOps = {
-    ESP32P4_SENSOR_IMX477, "IMX477", ESP32P4_CAM_SUPPORT_DETECT_ONLY, kAddrs, detect, configure,
-    stream_on, stream_off, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-}  // namespace
-const esp32p4_cam_sensor_ops_t *imx477_sensor_ops(void) { return &imx477_drv::kOps; }
 
 static bool ss_detect(const uint8_t *addrs, uint16_t pid, uint8_t *out) {
   for (const uint8_t *p = addrs; *p; ++p) {

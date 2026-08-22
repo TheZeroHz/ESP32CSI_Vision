@@ -13,7 +13,15 @@
 #define APP_STORAGE ESP32P4_STORAGE_AUTO
 #endif
 
-#include <ESP32CSI_Vision.h>
+#include "board_config.h"
+
+#ifndef APP_NAME
+#define APP_NAME "11_H264SdRecord"
+#endif
+#ifndef APP_DEBUG
+#define APP_DEBUG ESP32P4_DBG_CAM | ESP32P4_DBG_H264 | ESP32P4_DBG_SD
+#endif
+
 
 static const uint32_t RECORD_MS = 10000;  // wall-clock; press nothing — auto-stop
 static const uint32_t RECORD_BITRATE = 1500000;
@@ -36,17 +44,20 @@ static bool nextMp4Path(char *out, size_t out_cap) {
   return false;
 }
 
+ESP32P4_Debug dbg;
+
 void setup() {
   Serial.begin(115200);
   delay(1200);
   Serial.println("=== 11_H264SdRecord (MP4 only, wall-clock) ===");
-  Serial.printf("APP_STORAGE pref=%s\n", ESP32P4_StoragePref::kindName(APP_STORAGE));
+  dbg.begin(APP_NAME, APP_DEBUG);
+  Serial.printf("APP_STORAGE pref=%s\n", store.kindName(APP_STORAGE));
 
-  if (!cam.begin(ESP32P4_BOARD_GUITION_M3)) {
+  if (!cam.begin(esp32csi_cam_config())) {
     Serial.println("camera FAILED");
     while (true) delay(1000);
   }
-  if (!store.begin(APP_STORAGE, false, &sd, ESP32P4_BOARD_GUITION_M3)) {
+  if (!store.begin(APP_STORAGE, false, &sd, (esp32p4_board_t)ESP32CSI_BOARD)) {
     Serial.println("Storage FAILED");
     while (true) delay(1000);
   }
@@ -75,7 +86,7 @@ void setup() {
     while (true) delay(1000);
   }
 
-  Serial.printf("Recording ~%.1fs wall-clock (max speed) → %s\n", RECORD_MS / 1000.0f, path);
+  Serial.printf("Recording ~%.1fs wall-clock (max speed) -> %s\n", RECORD_MS / 1000.0f, path);
 
   uint32_t ok = 0, fail = 0;
   const uint32_t t0 = millis();
@@ -123,4 +134,7 @@ void setup() {
                 (unsigned)ok, (unsigned)fail, sec, sec > 0.01f ? ok / sec : 0);
 }
 
-void loop() { delay(1000); }
+void loop() {
+  dbg.poll();
+  delay(1000);
+}

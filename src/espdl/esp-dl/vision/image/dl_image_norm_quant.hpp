@@ -78,3 +78,4 @@ struct NormQuant<QuantType, 1> {
 };
 } // namespace image
 } // namespace dl
+

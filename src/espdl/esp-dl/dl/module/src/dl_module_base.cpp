@@ -180,3 +180,4 @@ void module_forward_dual_core(Module *op, void *args1, void *args2)
 
 } // namespace module
 } // namespace dl
+

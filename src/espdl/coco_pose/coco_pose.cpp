@@ -1,0 +1,75 @@
+#include "coco_pose.hpp"
+#include "storage/esp32p4_model_mount.h"
+#include "esp_log.h"
+#include <filesystem>
+
+#if CONFIG_COCO_POSE_MODEL_IN_FLASH_RODATA
+extern const uint8_t coco_pose_espdl[] asm("_binary_coco_pose_espdl_start");
+static const char *path = (const char *)coco_pose_espdl;
+#elif CONFIG_COCO_POSE_MODEL_IN_FLASH_PARTITION
+static const char *path = "coco_pose";
+#endif
+namespace coco_pose {
+Yolo11nPose::Yolo11nPose(const char *model_name, float score_thr, float nms_thr)
+{
+#if !CONFIG_COCO_POSE_MODEL_IN_SDCARD
+    bool param_copy = true;
+    if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM) < 1024 * 1024 * 9) {
+        param_copy = false;
+    }
+    m_model = new dl::Model(path,
+                            model_name,
+                            static_cast<fbs::model_location_type_t>(CONFIG_COCO_POSE_MODEL_LOCATION),
+                            0,
+                            dl::MEMORY_MANAGER_GREEDY,
+                            nullptr,
+                            param_copy);
+#else
+    auto sd_path = std::filesystem::path(esp32p4_model_mount_point()) / CONFIG_COCO_POSE_MODEL_SDCARD_DIR / model_name;
+    m_model = new dl::Model(sd_path.c_str(), fbs::MODEL_LOCATION_IN_SDCARD);
+#endif
+    m_model->minimize();
+    m_image_preprocessor = new dl::image::ImagePreprocessor(m_model, {0, 0, 0}, {255, 255, 255});
+    m_image_preprocessor->enable_letterbox({114, 114, 114});
+    m_postprocessor = new dl::detect::yolo11posePostProcessor(
+        m_model, m_image_preprocessor, score_thr, nms_thr, 10, {{8, 8, 4, 4}, {16, 16, 8, 8}, {32, 32, 16, 16}});
+}
+
+} // namespace coco_pose
+
+COCOPose::COCOPose(model_type_t model_type, bool lazy_load) : m_model_type(model_type)
+{
+    switch (model_type) {
+    case model_type_t::YOLO11N_POSE_S8_V1:
+    case model_type_t::YOLO11N_POSE_S8_V2:
+        m_score_thr[0] = coco_pose::Yolo11nPose::default_score_thr;
+        m_nms_thr[0] = coco_pose::Yolo11nPose::default_nms_thr;
+        break;
+    }
+    if (lazy_load) {
+        m_model = nullptr;
+    } else {
+        load_model();
+    }
+}
+
+void COCOPose::load_model()
+{
+    switch (m_model_type) {
+    case model_type_t::YOLO11N_POSE_S8_V1:
+#if CONFIG_FLASH_COCO_POSE_YOLO11N_POSE_S8_V1 || CONFIG_COCO_POSE_MODEL_IN_SDCARD
+        m_model = new coco_pose::Yolo11nPose("coco_pose_yolo11n_pose_s8_v1.espdl", m_score_thr[0], m_nms_thr[0]);
+#else
+        ESP_LOGE("coco_pose", "coco_pose_yolo11n_pose_s8_v1 is not selected in menuconfig.");
+#endif
+        break;
+    case model_type_t::YOLO11N_POSE_S8_V2:
+#if CONFIG_FLASH_COCO_POSE_YOLO11N_POSE_S8_V2 || CONFIG_COCO_POSE_MODEL_IN_SDCARD
+        m_model = new coco_pose::Yolo11nPose("coco_pose_yolo11n_pose_s8_v2.espdl", m_score_thr[0], m_nms_thr[0]);
+#else
+        ESP_LOGE("coco_pose", "coco_pose_yolo11n_pose_s8_v2 is not selected in menuconfig.");
+#endif
+        break;
+    }
+}
+

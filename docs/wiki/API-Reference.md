@@ -1,751 +1,529 @@
 # API Reference
 
-Complete public API for **ESP32CSI_Vision** v3.1.0.  
-Umbrella header: `#include <ESP32CSI_Vision.h>`
+Public API for **ESP32CSI_Vision** v3.25.0. Umbrella: `#include <ESP32CSI_Vision.h>` (or `#include "board_config.h"` in examples).
 
-Jump: [Camera](#esp32p4_camera) · [Config](#camera-config--helpers) · [JPEG](#esp32p4_jpeg) · [PPA](#esp32p4_ppa) · [Img](#esp32p4_img) · [DSP](#esp32p4_dsp) · [MJPEG](#esp32p4_mjpegserver) · [WHO](#esp32p4_whopipeline) · [PSRAM](#psram-helpers) · [FaceDetect](#esp32p4_facedetect-esp-idf-only)
+Enums and structs: [Enums & Types](Enums-and-Types.md). HTTP: [HTTP & Preferences](HTTP-and-Preferences.md). Pins: [Custom boards](../Custom-Boards.md).
+
+**Sketch convention:** declare objects, call methods on them. Model IDs are global (`ESP32P4_DET_DOG_224`, `ESP32P4_FACE_MSRMNP_S8_V1`). Nested `Class::Enum` values exist for C++ but sketches use the `ESP32P4_*` names. `bool` = success. Every `capture()` needs `release(fb)`.
+
+Jump: [board_config](#board_configh) · [Camera](#esp32p4_camera) · [JPEG](#esp32p4_jpeg) · [H.264](#esp32p4_h264) · [PPA](#esp32p4_ppa) · [Img](#esp32p4_img) · [Cv](#esp32p4_cv) · [Dsp](#esp32p4_dsp) · [MJPEG](#esp32p4_mjpegserver) · [WebPreview](#esp32p4_webpreview) · [SD / Storage](#esp32p4_sd--esp32p4_storagepref) · [Mic](#esp32p4_mic) · [Detect](#esp32p4_objectdetect) · [Pose / Seg / Cls / Gesture / Reid / OCR](#pose-seg-cls-gesture-reid-ocr) · [Face](#esp32p4_facedetect--esp32p4_faceai) · [QR](#esp32p4_qr) · [UVC](#esp32p4_uvc) · [V4L2](#esp32p4_v4l2) · [WHO](#esp32p4_whopipeline) · [VisionAi](#esp32p4_visionai) · [Debug](#esp32p4_debug) · [PSRAM](#psram)
+
+---
+
+## `board_config.h`
+
+Lives **next to the sketch**, not in `src/`. Arduino IDE shows it as a tab. Copy `examples/00_BoardConfig/board_config.h`.
+
+| Helper | Returns |
+| --- | --- |
+| `esp32csi_cam_config()` | `esp32p4_cam_config_t` from `CFG_CAM_*` |
+| `esp32csi_sd_config()` | `esp32p4_sd_config_t` from `CFG_SD_*` |
+| `esp32csi_mic_config()` | `esp32p4_mic_config_t` from `CFG_MIC_*` |
+| `esp32csi_wifi_config()` / `esp32csi_wifi_begin()` | C6 SDIO STA |
+| `esp32csi_eth_config()` / `esp32csi_eth_begin()` | RMII PHY |
+| `esp32csi_wfm_eth()` | `WfmEthConfig` for `WebFileManager` / `net.beginEthernet(...)` |
+| `esp32csi_print_board()` | Serial `CFG:` dump |
+
+```cpp
+#include "board_config.h"
+ESP32P4_Camera cam;
+cam.begin(esp32csi_cam_config());
+esp32csi_wifi_begin();
+```
+
+Library fallbacks still exist: `esp32p4_cam_config_default()`, `esp32p4_cam_config_board(ESP32P4_BOARD_GUITION_M3)`, `cam.begin(ESP32P4_BOARD_GUITION_M3)`. Prefer the sketch tab.
 
 ---
 
 ## ESP32P4_Camera
 
-MIPI CSI + ISP capture into PSRAM framebuffers (RGB565).
+**Header:** `cam/ESP32P4_Camera.h` · **Alias:** `ESP32P4_CSI_Camera`
 
-**Header:** `cam/ESP32P4_Camera.h`  
-**Alias:** `ESP32P4_CSI_Camera`
+MIPI CSI + ISP (default), or DVP / SPI / USB-host UVC. Output is `camera_fb_t` in PSRAM. Default format **RGB565**.
 
-### Lifecycle
+### Lifecycle / capture
 
-#### `bool begin(esp32p4_board_t board = ESP32P4_BOARD_GUITION_M3)`
-
-| Param | Type | Default | Description |
-| --- | --- | --- | --- |
-| `board` | `esp32p4_board_t` | `ESP32P4_BOARD_GUITION_M3` | Pin/LDO/sensor preset |
-
-**Returns:** `true` if sensor probed, FBs allocated, CSI streaming.
+| Method | Notes |
+| --- | --- |
+| `bool begin(const esp32p4_cam_config_t &cfg)` | Preferred. Probes sensor, allocs FBs, starts stream. |
+| `bool begin(esp32p4_board_t board)` | Library pin preset (Guition default). |
+| `void end()` | Stop + free. Safe if never started. |
+| `camera_fb_t *capture(uint32_t timeout_ms = 2000)` | Pool slot or `nullptr`. |
+| `void release(camera_fb_t *fb)` | Required. |
+| `bool startCapture()` / `stopCapture()` | Pause/resume without `end()`. |
+| `bool isCaptureStarted()` | |
 
 ```cpp
 ESP32P4_Camera cam;
-if (!cam.begin(ESP32P4_BOARD_GUITION_M3)) {
-  Serial.println("begin failed");
-}
-```
-
-#### `bool begin(const esp32p4_cam_config_t &cfg)`
-
-| Param | Type | Description |
-| --- | --- | --- |
-| `cfg` | `const esp32p4_cam_config_t &` | Full custom config (see [Config](#camera-config--helpers)) |
-
-```cpp
-esp32p4_cam_config_t cfg = esp32p4_cam_config_default();
-cfg.fb_count = 3;
-cfg.sensor = ESP32P4_SENSOR_OV5647;
-cfg.test_pattern = false;
-if (!cam.begin(cfg)) { /* fail */ }
-```
-
-#### `void end()`
-
-Stops CSI/ISP, frees LDO/FB resources. Safe to call if not started.
-
----
-
-### Capture
-
-#### `camera_fb_t *capture(uint32_t timeout_ms = 2000)`
-
-| Param | Type | Default | Description |
-| --- | --- | --- | --- |
-| `timeout_ms` | `uint32_t` | `2000` | Max wait for a new frame |
-
-**Returns:** Pointer to a filled `camera_fb_t`, or `nullptr` on timeout.  
-**Must call** `release(fb)` when done.
-
-```cpp
-camera_fb_t *fb = cam.capture(500);  // short timeout for streaming loops
-if (!fb) {
-  Serial.println("timeout");
-  return;
-}
-// use fb->buf, fb->width, fb->height, fb->len
+if (!cam.begin(esp32csi_cam_config())) { /* fail */ }
+camera_fb_t *fb = cam.capture(500);
+if (!fb) return;
+// fb->buf, fb->width, fb->height, fb->len, fb->format
 cam.release(fb);
 ```
 
-#### `void release(camera_fb_t *fb)`
+### Format / JPEG capture
 
-| Param | Type | Description |
-| --- | --- | --- |
-| `fb` | `camera_fb_t *` | Frame from `capture()` (nullptr-safe in practice — always pass what you got) |
-
-Returns the framebuffer to the pool so CSI can refill it.
-
----
-
-### Sensor preferences (set)
-
-All return `bool` (`true` = applied). OV5647 path is the primary implementation.
-
-#### `bool setTestPattern(bool enable)`
-
-| Param | Description |
+| Method | Notes |
 | --- | --- |
-| `enable` | `true` = sensor test pattern / colorbar |
+| `bool setFormat(esp32p4_cam_pixformat_t fmt)` | Restart pipeline. |
+| `format()` / `formatName()` | Current FB format. |
+| `bool supportsFormat(fmt)` | |
+| `bool setJpegQuality(uint8_t q)` | 1–100 when capturing JPEG. |
+| `bool setJpegChroma(esp32p4_jpeg_chroma_t c)` | RGB inputs. |
 
-```cpp
-cam.setTestPattern(true);   // debug cable / ISP
-```
+### Sensor / ISP
 
-#### `bool setHMirror(bool enable)` / `bool setVFlip(bool enable)`
-
-| Param | Description |
+| Group | Methods |
 | --- | --- |
-| `enable` | Horizontal mirror / vertical flip |
+| Mirror / flip | `setHMirror` `setVFlip` (+ getters) |
+| AE / AGC | `setAEC` `setAGC` `setExposure` `setGain` `setGainCeiling` `setExposureTime` `setAeTarget` `setAeEvBias` `setAntiFlicker` |
+| Picture | `setBrightness` `setContrast` `setSaturation` `setHue` `setSharpness` `setDenoise` |
+| AWB / ISP | `setAwb` `setIspAe` `setRedBalance` `setBlueBalance` `ispReady` `ispLuma` `ispEnvLuma` |
+| Pattern | `setTestPattern` |
+| AF (OV5647) | `afBegin` `afPresent` `setAfPosition` `afScan` `afScore` |
+| Identity | `width` `height` `sensorName` `sensorType` `detected` `bus` `busName` `fbCount` `psramOk` |
+
+`setSensor*` names are aliases for the same setters (v4l2-ctl / HTTP).
+
+### Dual camera
 
 ```cpp
-cam.setHMirror(true);
-cam.setVFlip(false);
-```
-
-#### `bool setAEC(bool enable)` / `bool setAGC(bool enable)`
-
-| Param | Description |
-| --- | --- |
-| `enable` | Auto exposure / auto gain |
-
-```cpp
-cam.setAEC(false);
-cam.setAGC(false);
-cam.setExposure(800);
-cam.setGain(16);
-```
-
-#### `bool setExposure(uint16_t lines)`
-
-| Param | Type | Description |
-| --- | --- | --- |
-| `lines` | `uint16_t` | Manual exposure (sensor line units; meaningful when AEC off) |
-
-#### `bool setGain(uint16_t gain)`
-
-| Param | Type | Description |
-| --- | --- | --- |
-| `gain` | `uint16_t` | Manual gain (when AGC off) |
-
-#### `bool setGainCeiling(uint16_t ceiling)`
-
-| Param | Type | Description |
-| --- | --- | --- |
-| `ceiling` | `uint16_t` | Max gain the AGC path may use |
-
----
-
-### Sensor preferences (get)
-
-| Method | Param | Returns |
-| --- | --- | --- |
-| `bool getHMirror(bool *out) const` | out pointer | writes current mirror |
-| `bool getVFlip(bool *out) const` | out pointer | writes current flip |
-| `bool getAEC(bool *out) const` | out pointer | AEC on/off |
-| `bool getAGC(bool *out) const` | out pointer | AGC on/off |
-| `bool getExposure(uint16_t *lines) const` | out pointer | exposure lines |
-| `bool getGain(uint16_t *gain) const` | out pointer | gain |
-| `bool getGainCeiling(uint16_t *ceiling) const` | out pointer | ceiling |
-
-```cpp
-bool aec = true;
-uint16_t exp = 0;
-if (cam.getAEC(&aec) && cam.getExposure(&exp)) {
-  Serial.printf("aec=%d exp=%u\n", aec, exp);
+if (!esp32p4_cam_dual_ok(camA.bus(), camB.bus())) {
+  Serial.println(esp32p4_cam_dual_why(camA, camB));
 }
 ```
 
-#### `bool testPattern() const`
-
-Cached flag whether test pattern was requested via config/`setTestPattern`.
-
----
-
-### Status getters
-
-| Method | Returns | Description |
-| --- | --- | --- |
-| `uint16_t width() const` | pixels | Active frame width |
-| `uint16_t height() const` | pixels | Active frame height |
-| `int sensorAddress() const` | I²C addr | `0` if not detected |
-| `bool detected() const` | bool | `sensorAddress() > 0` |
-| `const char *sensorName() const` | C string | e.g. `"OV5647 (OV CSI)"` |
-| `uint32_t newTransCount() const` | count | CSI new-transaction counter |
-| `uint32_t doneCount() const` | count | CSI done counter |
-| `uint8_t fbCount() const` | count | Allocated framebuffers |
-| `bool psramOk() const` | bool | PSRAM usable for FBs |
-
-```cpp
-Serial.printf("%s @0x%02X  %ux%u  fb=%u  psram=%s\n",
-              cam.sensorName(), cam.sensorAddress(),
-              cam.width(), cam.height(), cam.fbCount(),
-              cam.psramOk() ? "ok" : "NO");
-```
-
----
-
-## Camera config & helpers
-
-### `esp32p4_cam_config_t`
-
-| Field | Type | Typical | Description |
-| --- | --- | --- | --- |
-| `sda` | `int` | `7` | I²C SDA GPIO |
-| `scl` | `int` | `8` | I²C SCL GPIO |
-| `wire` | `TwoWire *` | `&Wire` | I²C instance (`&Wire` or `&Wire1`). `nullptr` = `Wire` |
-| `xclk` | `int` | `-1` | External XCLK GPIO (`-1` = unused / internal) |
-| `pwdn` | `int` | `-1` | Power-down GPIO |
-| `reset` | `int` | `-1` | Reset GPIO |
-| `xclk_hz` | `uint32_t` | `24000000` | Sensor clock Hz |
-| `i2c_addr` | `int` | `0` | Force addr; `0` = probe |
-| `ldo_chan` | `int` | `3` | MIPI PHY LDO channel |
-| `ldo_mv` | `int` | `2500` | LDO millivolts |
-| `frame_size` | `esp32p4_cam_framesize_t` | `800×640` | Native CSI size |
-| `pixel_format` | `esp32p4_cam_pixformat_t` | `RGB565` | Framebuffer after ISP. Keep `ESP32P4_PIXFORMAT_RGB565`. Sensor MIPI RAW10/RAW8 is chosen by the driver, not this field. |
-| `lane_bit_rate_mbps` | `int` | `200` | CSI lane bitrate |
-| `sensor` | `esp32p4_cam_sensor_t` | `OV5647` | Sensor selection |
-| `test_pattern` | `bool` | `false` | Start with pattern |
-| `fb_count` | `uint8_t` | `2` | PSRAM FBs (max `ESP32P4_CAM_FB_MAX`, default 3) |
-
-### Helpers
-
-#### `esp32p4_cam_config_t esp32p4_cam_config_default()`
-
-Same as Guition M3 board defaults.
-
-#### `esp32p4_cam_config_t esp32p4_cam_config_board(esp32p4_board_t board)`
-
-| Param | Description |
-| --- | --- |
-| `board` | Preset id (pins currently share Guition-style defaults in v3.1; use custom `cfg` for other wiring) |
-
-```cpp
-esp32p4_cam_config_t cfg = esp32p4_cam_config_board(ESP32P4_BOARD_GUITION_M3);
-cfg.fb_count = 3;
-cfg.lane_bit_rate_mbps = 200;
-cam.begin(cfg);
-
-// Dual I²C (camera on the second bus, e.g. LilyGO T-Display P4):
-// cfg.sda = 20; cfg.scl = 21; cfg.wire = &Wire1;
-```
-
-### `camera_fb_t`
-
-| Field | Type | Description |
-| --- | --- | --- |
-| `buf` | `uint8_t *` | Pixel data (RGB565: 2 bytes/pixel) |
-| `len` | `size_t` | Byte length (`width * height * 2` for RGB565) |
-| `width` | `uint16_t` | Width |
-| `height` | `uint16_t` | Height |
-| `format` | `esp32p4_cam_pixformat_t` | Pixel format |
-| `timestamp_us` | `uint32_t` | Capture timestamp (µs) |
-
-```cpp
-camera_fb_t *fb = cam.capture();
-if (fb && fb->format == ESP32P4_PIXFORMAT_RGB565) {
-  const uint16_t *px = (const uint16_t *)fb->buf;
-  uint16_t center = px[(fb->height / 2) * fb->width + (fb->width / 2)];
-  Serial.printf("center=0x%04X\n", center);
-}
-cam.release(fb);
-```
+CSI + CSI is rejected. CSI + DVP/SPI/UVC_HOST is OK (`28_DualCam`).
 
 ---
 
 ## ESP32P4_Jpeg
 
-Hardware JPEG encode / decode.
-
 **Header:** `jpeg/ESP32P4_Jpeg.h`
 
-### `bool begin(uint16_t max_w = 800, uint16_t max_h = 640, uint8_t quality = 45)`
-
-| Param | Type | Default | Description |
-| --- | --- | --- | --- |
-| `max_w` | `uint16_t` | `800` | Max encode width to size internal buffers |
-| `max_h` | `uint16_t` | `640` | Max encode height |
-| `quality` | `uint8_t` | `45` | Initial quality **1–100** (higher = larger/sharper) |
-
-**Returns:** `true` if HW JPEG engine ready.
+| Method | Notes |
+| --- | --- |
+| `bool begin(max_w, max_h, quality = 45, max_src_bpp = 2)` | Alloc encode/decode scratch. |
+| `void end()` | |
+| `size_t encode(fb, out, out_cap)` | RGB565 / RGB888 / YUV / GRAY / JPEG copy. |
+| `size_t encode(rgb565, w, h, out, out_cap)` | |
+| `size_t encode(src, w, h, fmt, out, out_cap)` | Explicit pixformat. |
+| `bool decodeInfo(jpg, len, &w, &h)` | |
+| `size_t decode(jpg, len, rgb_out, cap, &w, &h)` | → RGB565 |
+| `setQuality` / `setChroma` / `clearInput` | |
 
 ```cpp
 ESP32P4_Jpeg jpeg;
 jpeg.begin(cam.width(), cam.height(), 45);
-```
-
-### `void end()`
-
-Release encoder/decoder resources.
-
-### `size_t encode(const camera_fb_t *fb, uint8_t *out, size_t out_cap)`
-
-| Param | Type | Description |
-| --- | --- | --- |
-| `fb` | `const camera_fb_t *` | RGB565 frame |
-| `out` | `uint8_t *` | Destination JPEG buffer (prefer PSRAM) |
-| `out_cap` | `size_t` | Capacity of `out` |
-
-**Returns:** JPEG byte count, or `0` on failure.
-
-```cpp
 uint8_t *jpg = (uint8_t *)esp32p4_psram_alloc(200 * 1024);
-camera_fb_t *fb = cam.capture();
 size_t n = jpeg.encode(fb, jpg, 200 * 1024);
-cam.release(fb);
-Serial.printf("jpeg %u bytes\n", (unsigned)n);
 ```
 
-### `size_t encode(const uint8_t *rgb565, uint16_t w, uint16_t h, uint8_t *out, size_t out_cap)`
+---
 
-| Param | Description |
+## ESP32P4_H264
+
+**Header:** `h264/ESP32P4_H264.h` — P4 HW Baseline. Prefer `openMp4()` (wall-clock duration, temp Annex-B deleted).
+
+| Method | Notes |
 | --- | --- |
-| `rgb565` | Raw RGB565 buffer |
-| `w`, `h` | Dimensions |
-| `out`, `out_cap` | JPEG destination |
+| `bool begin(w, h, fps = 15, bitrate = 0)` | |
+| `bool begin(const esp32p4_h264_cfg_t &cfg)` | `input_format` default RGB565. |
+| `size_t encode(fb, out, cap, int *frame_type = nullptr)` | Also RGB565 pointer overload. |
+| `bool openMp4(fs, path, pcm_path = nullptr, pcm_rate = 16000)` | Path must end `.mp4`. Optional PCM → AAC on close. |
+| `size_t encodeToFile(fb)` | |
+| `void closeFile()` | Remux + delete temp. |
+| `setBitrate` `setGop` `setFps` `setQp` `forceIdr` | Runtime RC. |
 
-Same return as above — use after PPA scale when you no longer have a `camera_fb_t`.
+YUV420 / GRAY8 skip RGB convert. YUV422 UYVY and YUYV go to HW with no colour convert.
 
-### `void setQuality(uint8_t q)`
-
-| Param | Range | Description |
-| --- | --- | --- |
-| `q` | 1–100 | Clamped; applies to next `encode` |
-
-```cpp
-jpeg.setQuality(60);
-```
-
-### `bool decodeInfo(const uint8_t *jpg, size_t jpg_len, uint32_t *w, uint32_t *h)`
-
-| Param | Description |
-| --- | --- |
-| `jpg`, `jpg_len` | JPEG blob |
-| `w`, `h` | Out: decoded dimensions |
-
-**Returns:** `true` if SOF parsed.
-
-### `size_t decode(const uint8_t *jpg, size_t jpg_len, uint8_t *rgb_out, size_t out_cap, uint32_t *w, uint32_t *h)`
-
-| Param | Description |
-| --- | --- |
-| `jpg`, `jpg_len` | Input JPEG |
-| `rgb_out`, `out_cap` | RGB output buffer + capacity |
-| `w`, `h` | Out dimensions |
-
-**Returns:** Bytes written (0 on fail). See example `03_JpegDecode`.
+Video-only: `11_H264SdRecord`. Video + mic, no stream: **`44_AvSdRecord`**. UI Record: `17` / `30` / `31`.
 
 ---
 
 ## ESP32P4_Ppa
 
-Hardware Pixel Processing Accelerator — scale / rotate / mirror RGB565.
+**Header:** `ppa/ESP32P4_Ppa.h` — P4 SRM (scale / rotate / mirror).
 
-**Header:** `ppa/ESP32P4_Ppa.h`
-
-### `bool begin()` / `void end()`
-
-Init / tear down PPA client.
-
-### `bool scale(const camera_fb_t *src, uint8_t *dst, size_t dst_cap, uint16_t dst_w, uint16_t dst_h)`
-
-| Param | Type | Description |
-| --- | --- | --- |
-| `src` | `const camera_fb_t *` | Source frame |
-| `dst` | `uint8_t *` | Destination RGB565 buffer |
-| `dst_cap` | `size_t` | Must be ≥ `dst_w * dst_h * 2` |
-| `dst_w` | `uint16_t` | Output width |
-| `dst_h` | `uint16_t` | Output height |
-
-**Returns:** `true` on success.
+| Method | Notes |
+| --- | --- |
+| `bool begin()` | Required before scale. |
+| `bool scale(src_fb, dst, cap, dst_w, dst_h)` | |
+| `bool scaleFit` / `scaleCover` | Letterbox vs crop-fill. |
+| `bool rotate90` / `mirror` | |
+| `bool scaleRgb565(src, sw, sh, dst, dw, dh)` | |
+| `bool rgb565ToGray` / `rgb565ToGrayScale` | |
+| `bool fillRect565(...)` | HW fill when possible. |
 
 ```cpp
 ESP32P4_Ppa ppa;
 ppa.begin();
-uint8_t *scaled = (uint8_t *)esp32p4_psram_alloc(400 * 320 * 2);
-camera_fb_t *fb = cam.capture();
-if (ppa.scale(fb, scaled, 400 * 320 * 2, 400, 320)) {
-  Serial.println("scaled ok");
-}
-cam.release(fb);
+ppa.scale(fb, dst, cap, 320, 240);
 ```
 
-### `bool rotate90(const camera_fb_t *src, uint8_t *dst, size_t dst_cap)`
-
-90° clockwise. Destination size is swapped (`h×w`). `dst_cap` must fit `src->height * src->width * 2`.
-
-### `bool mirror(const camera_fb_t *src, uint8_t *dst, size_t dst_cap, bool mx, bool my)`
-
-| Param | Description |
-| --- | --- |
-| `mx` | Mirror X (horizontal) |
-| `my` | Mirror Y (vertical) |
-
-Same dimensions as source.
-
-```cpp
-ppa.mirror(fb, dst, dst_cap, true, false);  // h-mirror only
-```
+CPU fallback: `ESP32P4_Img` (`06_PpaScale`).
 
 ---
 
 ## ESP32P4_Img
 
-CPU pixel utilities (no HW). All **static** methods.
+**Header:** `img/ESP32P4_Img.h` — software RGB565 helpers. Call on an object in sketches (`img.downsample2x565(...)`).
 
-**Header:** `img/ESP32P4_Img.h`
+| Method | Notes |
+| --- | --- |
+| `rgb565ToRgb888` / `rgb888ToRgb565` | Packed. |
+| `luma565` / `histogram565` | |
+| `crop565` / `downsample2x565` / `blit565` | |
+| `fillRect565(img, w, h, rect, color, thickness = 2)` | |
 
-### `esp32p4_rect_t`
+---
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `x`, `y` | `int` | Top-left |
-| `w`, `h` | `int` | Size |
+## ESP32P4_Cv
 
-### Methods
+**Header:** `cv/ESP32P4_Cv.h` — OpenCV-style imgproc on RGB565 / GRAY8. PPA used for full-frame gray/scale.
 
-| Method | Params | Description |
-| --- | --- | --- |
-| `rgb565ToRgb888` | `src`, `dst`, `pixels` | Expand to 3 bytes/pix |
-| `rgb888ToRgb565` | `src`, `dst`, `pixels` | Pack to 2 bytes/pix |
-| `luma565` | `px` | Approximate luma of one RGB565 pixel |
-| `histogram565` | `src`, `pixels`, `bins[16]` | 16-bin luma histogram |
-| `crop565` | `src`, `sw`, `sh`, `r`, `dst` | Crop rectangle to `dst` |
-| `downsample2x565` | `src`, `sw`, `sh`, `dst` | 2× box downsample (CPU fallback) |
-| `fillRect565` | `img`, `w`, `h`, `r`, `color`, `thickness=2` | Draw rect outline (`thickness` default 2) |
-| `blit565` | `fb`, `dst`, `dw`, `dh` | Blit frame into destination canvas |
+| Method | Notes |
+| --- | --- |
+| `toGray` / `toGrayScale` | RGB565 → GRAY8 |
+| `blur3x3` `threshold` `otsu` `adaptiveThreshold` | |
+| `morphologyOpen` / `Close` `erode` `dilate` | |
+| `inRangeHsv` `rgb565ToHsv` | H 0..179 |
+| `edges` | Sobel + dual threshold |
+| `findBlobs` | Needs `label_scratch` (PSRAM) |
+| `line` `circle` `putText` `drawBlob` | Annotate RGB565 |
 
 ```cpp
-esp32p4_rect_t box{100, 80, 120, 120};
-ESP32P4_Img::fillRect565((uint16_t *)fb->buf, fb->width, fb->height, box, 0xF800, 3); // red
-
-uint32_t bins[16] = {};
-ESP32P4_Img::histogram565((const uint16_t *)fb->buf, fb->width * fb->height, bins);
+ESP32P4_Cv cv;
+cv.inRangeHsv((uint16_t *)fb->buf, fb->width, fb->height, mask, lo, hi);
+int n = cv.findBlobs(mask, w, h, blobs, 16, 80, labels);
 ```
+
+`esp_cv::Mat` in `opencv/esp_cv.hpp` wraps the same buffers. Example `19_CvColorBlobs`. In `20_EthCvPreview` use `stream.cvConfig()` — do not declare a global `cv` there.
 
 ---
 
 ## ESP32P4_Dsp
 
-Frame-difference motion detection on RGB565.
+**Header:** `dsp/ESP32P4_Dsp.h` — frame-diff motion.
 
-**Header:** `dsp/ESP32P4_Dsp.h`
-
-### `esp32p4_motion_t`
-
-| Field | Type | Description |
-| --- | --- | --- |
-| `moving` | `bool` | Motion above threshold |
-| `changed` | `uint32_t` | Changed sample count |
-| `total` | `uint32_t` | Total samples compared |
-| `roi` | `esp32p4_rect_t` | Bounding box of change |
-
-### `bool begin(uint16_t w, uint16_t h, uint8_t threshold = 25)`
-
-| Param | Type | Default | Description |
-| --- | --- | --- | --- |
-| `w`, `h` | `uint16_t` | — | Frame size (match camera) |
-| `threshold` | `uint8_t` | `25` | Per-pixel luma delta threshold (lower = more sensitive) |
-
-### `bool detect(const camera_fb_t *fb, esp32p4_motion_t *out)`
-
-| Param | Description |
+| Method | Notes |
 | --- | --- |
-| `fb` | Current frame |
-| `out` | Filled motion result |
+| `bool begin(w, h, threshold = 25)` | Downsampled gray history. |
+| `bool detect(fb, esp32p4_motion_t *out)` | `out->moving`, `roi`. |
 
-**Returns:** `true` if comparison ran (first frame may seed background only).
-
-```cpp
-ESP32P4_Dsp dsp;
-dsp.begin(cam.width(), cam.height(), 22);
-
-camera_fb_t *fb = cam.capture();
-esp32p4_motion_t m{};
-if (dsp.detect(fb, &m) && m.moving) {
-  Serial.printf("motion roi=%d,%d %dx%d  %u/%u\n",
-                m.roi.x, m.roi.y, m.roi.w, m.roi.h, m.changed, m.total);
-}
-cam.release(fb);
-```
-
-### `void end()`
-
-Frees previous-frame buffer.
+Example `05_MotionDetect`.
 
 ---
 
 ## ESP32P4_MjpegServer
 
-Dual-port Wi‑Fi webcam: **control UI on `port`**, **MJPEG on `port+1`**.
+**Header:** `stream/ESP32P4_Mjpeg.h`
 
-**Header:** `stream/ESP32P4_Mjpeg.h`  
-See also [HTTP & Preferences](HTTP-and-Preferences.md).
+Fat Camera UI: a **worker** captures, optional PPA scale, JPEG, MJPEG. You do not call `capture()` in `loop()` unless you also hook overlays.
 
-### `bool begin(ESP32P4_Camera *cam, uint16_t port = 80, uint8_t quality = 35)`
-
-| Param | Type | Default | Description |
-| --- | --- | --- | --- |
-| `cam` | `ESP32P4_Camera *` | — | Already-started camera |
-| `port` | `uint16_t` | `80` | Control / UI / `/jpg` port |
-| `quality` | `uint8_t` | `35` | Initial JPEG quality (lower = faster) |
-
-**Side effect:** stream port = `port + 1` (e.g. **81**).
+| Method | Notes |
+| --- | --- |
+| `bool begin(ESP32P4_Camera *cam, uint16_t port = 80, uint8_t quality = 35)` | UI `port`, stream `port+1`. |
+| `void loop()` | HTTP + debug poll. Call every loop. |
+| `void end()` | |
+| `setQuality` `setFrameSkip` `setFramesize` | Stream enum 0–9. |
+| `enableCapture(fs, "/IMG")` | Snapshot JPEG. |
+| `enableVideoRecord(fs, &h264, "/VIDEO")` | UI Record → MP4. |
+| `enableMic(&mic)` | Waveform + AAC in MP4. |
+| `setFilesBrowserPort(port)` | Link to WebFileManager. |
+| `setOverlay(...)` | RGB565 annotate before JPEG (does not mutate H.264 FB). |
 
 ```cpp
 ESP32P4_MjpegServer stream;
-stream.begin(&cam, 80, 35);
-Serial.printf("UI http://%s/\n", WiFi.localIP().toString().c_str());
-Serial.printf("stream http://%s:%u/stream\n",
-              WiFi.localIP().toString().c_str(), stream.streamPort());
+esp32csi_wifi_begin();
+stream.begin(&cam, 80, 35);   // http://ip/  and  http://ip:81/stream
 ```
 
-### `void loop()`
+Ports, `/control`, `/status`: [HTTP & Preferences](HTTP-and-Preferences.md).
 
-Call from Arduino `loop()`. HTTP runs in FreeRTOS tasks; this yields (`delay(1)`).
+---
 
-### `void end()`
+## ESP32P4_WebPreview
 
-Stops workers, HTTP servers, frees JPEG/PPA buffers.
+**Header:** `stream/ESP32P4_WebPreview.h`
 
-### Live preferences
+**You** own capture. No hidden worker. Browser: `/` (preview), `/stream`, `/jpg`, `/dets` (whatever JSON you set).
 
-| Method | Param | Description |
-| --- | --- | --- |
-| `void setQuality(uint8_t q)` | 1–100 | JPEG quality |
-| `void setFrameSkip(uint8_t skip)` | 0+ | Skip N frames between encodes |
-| `bool setFramesize(uint8_t fs)` | `0`–`4` | PPA output size enum |
+| Method | Notes |
+| --- | --- |
+| `bool begin(port = 80, quality = 40, max_w = 1920, max_h = 1080)` | |
+| `bool present(const camera_fb_t *fb)` | Encode + publish. FB still yours — `release` after. |
+| `bool presentRgb565(rgb565, w, h)` | |
+| `void setStatusJson(const char *json)` | Served at `/dets`. |
+| `void setTitle(const char *title)` | |
+| `void loop()` | |
 
 ```cpp
-stream.setQuality(50);
-stream.setFrameSkip(1);
-stream.setFramesize(ESP32P4_STREAM_QVGA);  // 320x240
+ESP32P4_WebPreview preview;
+preview.begin(80, 40);
+camera_fb_t *fb = cam.capture();
+int n = det.infer(fb);
+det.draw((uint16_t *)fb->buf, fb->width, fb->height, det.results(), n, det.model());
+preview.setStatusJson(json);
+preview.present(fb);
+cam.release(fb);
+preview.loop();
 ```
 
-### Getters
+Example `43_CamWebModels`.
 
-| Method | Returns |
+---
+
+## ESP32P4_Sd / ESP32P4_StoragePref
+
+**Headers:** `sd/ESP32P4_Sd.h`, `storage/ESP32P4_StoragePref.h`
+
+```cpp
+ESP32P4_Sd sd;
+ESP32P4_StoragePref store;
+sd.begin(esp32csi_sd_config());
+store.begin(ESP32P4_STORAGE_AUTO, false, &sd);
+store.locateModel("/models/p4/espdet_pico_224_224_dog.espdl");
+```
+
+| SD | Notes |
 | --- | --- |
-| `uint32_t sent() const` | Frames sent on stream |
-| `uint32_t lastJpegBytes() const` | Last JPEG size |
-| `uint8_t quality() const` | Current quality |
-| `uint8_t frameSkip() const` | Current skip |
-| `uint8_t framesize() const` | Current framesize enum |
-| `uint16_t outWidth() / outHeight()` | Encoded output size |
-| `uint16_t controlPort() const` | UI port |
-| `uint16_t streamPort() const` | MJPEG port |
+| `begin(esp32csi_sd_config())` | Preferred. |
+| `fs()` | `SD_MMC`. |
+| `writeFile` `writeBytes` `readFile` `listDir` `mkdir` `remove` `exists` | |
+| `cardType` `totalBytes` `usedBytes` | |
+
+| StoragePref | Notes |
+| --- | --- |
+| `begin(pref, format_flash, &sd)` | Mounts preferred + extras. |
+| `fs()` `vfsRoot()` `vfsPath()` | Arduino vs `fopen` paths. |
+| `locateModel(rel)` | Points ESP-DL at whichever volume has the file. |
+| `attachToWfm(wfm)` | Extra volumes in the file manager. |
+
+Models also load from FFat / LittleFS / SPIFFS with **no SD**. Partition tip: `app3M_fat9M_16MB`. Long H.264 belongs on microSD.
+
+---
+
+## ESP32P4_Mic
+
+**Header:** `audio/ESP32P4_Mic.h` — ES8311 + I2S.
+
+```cpp
+ESP32P4_Mic mic;
+mic.begin(esp32csi_mic_config());
+mic.poll();   // every loop while recording
+```
+
+| Method | Notes |
+| --- | --- |
+| `begin(esp32csi_mic_config())` | Preferred. |
+| `startPcmFile(fs, path)` / `startPcmRam(cap)` | |
+| `stopPcmFile` / `pcmBytes` | |
+| `setGain(percent)` | 0–100 |
+| `copyWave` / `readStream` | UI waveform / AAC source. |
+
+Examples `15_MicSdRecord`, `30_EthLiveAvFiles`.
+
+---
+
+## ESP32P4_ObjectDetect
+
+**Header:** `detect/ESP32P4_ObjectDetect.h`
+
+Pass an image, get boxes + class names. Weights: `/models/p4/*.espdl` on any mounted volume.
+
+| Method | Notes |
+| --- | --- |
+| `bool begin(ESP32P4_DET_DOG_224)` | Any `ESP32P4_DET_*`. |
+| `bool setModel(m)` | Switch weights. |
+| `void setScoreThr(float)` | Default 0.25. |
+| `int infer(fb)` | Stores up to 32 hits in `results()`. |
+| `int detect(fb, out, max_out)` | Caller buffer. |
+| `inferRgb888` / `inferJpeg(jpeg, jpg, len)` | |
+| `const esp32p4_det_t *results()` | |
+| `size_t resultsJson(buf, cap)` | |
+| `label(category)` / `modelName` / `modelFile` | |
+| `draw(rgb565, w, h, dets, n, model, color)` | Boxes + names. |
+
+```cpp
+ESP32P4_ObjectDetect det;
+det.begin(ESP32P4_DET_DOG_224);
+int n = det.infer(fb);
+det.resultsJson(json, sizeof(json));
+det.draw((uint16_t *)fb->buf, fb->width, fb->height, det.results(), n, det.model());
+```
+
+Serial-only: `42_DetectApi`. Web: `32`–`36`, `43`.
+
+---
+
+## Pose, Seg, Cls, Gesture, Reid, OCR
+
+Same pattern: `begin` → `detect`/`run`/`classify` on RGB565 or `camera_fb_t` → optional `draw`.
+
+| Class | `begin` | Infer | Weights |
+| --- | --- | --- | --- |
+| `ESP32P4_Pose` | `ESP32P4_POSE_YOLO11N_V2` | `detect` → `esp32p4_pose_t` (COCO-17) | `coco_pose_yolo11n_pose_s8_v2.espdl` |
+| `ESP32P4_Seg` | default YOLO11n-Seg | `detect` → masks valid until next call | `coco_seg_yolo11n_seg_s8_v1.espdl` |
+| `ESP32P4_Cls` | `begin(topk = 5)` | `classify` → ImageNet top-k | `imagenet_cls_mobilenetv2_s8_v1.espdl` |
+| `ESP32P4_Gesture` | `begin()` | hand box + 8-class label | hand Pico + gesture MobileNet |
+| `ESP32P4_Reid` | `begin("/sdcard/reid.db")` | `run` / `enroll` | pedestrian Pico + OSNet |
+| `ESP32P4_Ocr` | `ESP32P4_OCR_REC_S16`, `ESP32P4_OCR_SHORT` | `run` → quads + `text` | PaddleOCR v6 det + rec |
+| `ESP32P4_Speaker` | `begin(6)` | `embedPcm` / `embedWav` — **caller `free()`s** embedding | `sv_tdnn_tiny_3s/6s.espdl` |
+
+Examples `37`–`41`. Speaker needs ESP-DL audio (`ESP32P4_ESPDL_ENABLE_SPEAKER`).
+
+---
+
+## ESP32P4_FaceDetect / ESP32P4_FaceAi
+
+**Headers:** `face/ESP32P4_FaceDetect.h`, `face/ESP32P4_FaceAi.h`
+
+Vendored ESP-DL — **Arduino and IDF**. Extra IDF samples: `idf_examples/08_FaceDetect`, `21_EthFaceWeb`.
+
+| FaceDetect | Notes |
+| --- | --- |
+| `begin(ESP32P4_FACE_MSRMNP_S8_V1)` | Also Pico 224 / 416. |
+| `int detect(fb, out, max_out)` | Boxes + 5 landmarks. |
+| `draw(...)` | |
+
+| FaceAi | Notes |
+| --- | --- |
+| `begin(det_model, db_path, names_path, feat = MFN_S8_V1)` | `db_path = nullptr` → detect-only. |
+| `int run(fb, out, max_out, recognize = true)` | Enroll and recognize are mutually exclusive. |
+| `requestEnroll(name)` / `cancelEnroll` | N samples then one feature. |
+| `clearDb` `deleteId` `deleteName` `setName` | |
+| `draw(...)` | |
+
+```cpp
+ESP32P4_FaceAi face;
+face.begin(ESP32P4_FACE_MSRMNP_S8_V1, "/sdcard/face.db", "/sdcard/face_names.txt");
+int n = face.run(fb, ids, 8);
+face.draw((uint16_t *)fb->buf, fb->width, fb->height, ids, n);
+```
+
+---
+
+## ESP32P4_Qr
+
+**Header:** `qr/ESP32P4_Qr.h`
+
+| Method | Notes |
+| --- | --- |
+| `bool begin(max_w = 640, max_h = 480, try_downscale = true)` | |
+| `int scan(rgb565, w, h, out, max_out)` | |
+| `setFormats(mask)` | ZXing format bits. |
+| `draw(...)` | Quad overlay. |
+
+Example `22_EthQrWeb`.
+
+---
+
+## ESP32P4_Uvc
+
+**Header:** `uvc/ESP32P4_Uvc.h` — USB **gadget** webcam (CSI → HW JPEG → PC). Not V4L2. Not host UVC.
+
+Declare **global** so TinyUSB registers before CDC. Board: USB-OTG; prefer CDC On Boot **Disabled**.
+
+```cpp
+ESP32P4_Camera cam;
+ESP32P4_Uvc uvc;          // global
+void setup() {
+  cam.begin(esp32csi_cam_config());
+  uvc.begin(&cam, 45);
+}
+```
+
+Do not combine with `ESP32P4_CAM_BUS_UVC_HOST`. Example `23_UsbUvc`. Host webcam → `camera_fb_t`: `26_UsbHostUvc`.
+
+---
+
+## ESP32P4_V4l2
+
+**Header:** `v4l2/ESP32P4_V4l2.h` — POSIX node on the **same** `ESP32P4_Camera`. Does not replace `capture()`.
+
+| Method | Notes |
+| --- | --- |
+| `bool begin(&cam, path = nullptr)` | Default `/dev/video0` CSI, `/dev/video2` DVP, … |
+| `int fd()` | `-1` if VFS off. |
+| `int ioctl(request, arg)` | |
+| `setCtrl` / `getCtrl` / `listCtrls` / `listFormats` | |
+| `int ctl("--list-ctrls")` | v4l2-ctl-style string. |
+| `dqbuf` / `qbuf` | Use these **or** `cam.capture()`, not both. |
+
+Example `27_V4l2Ctl`. Do not also start Arduino `ESP_Video` on the same CSI host.
 
 ---
 
 ## ESP32P4_WhoPipeline
 
-ESP-WHO–style async capture queue (Arduino-safe; **no** ESP-DL).
+**Header:** `who/ESP32P4_Who.h` — async capture queue (no ESP-DL).
 
-**Header:** `who/ESP32P4_Who.h`
-
-### Types
-
-```cpp
-struct esp32p4_who_fb_t {
-  uint8_t *buf;
-  size_t len;
-  uint16_t width;
-  uint16_t height;
-  uint32_t timestamp_us;
-  void *user;
-};
-
-typedef void (*esp32p4_who_cb_t)(const esp32p4_who_fb_t *fb, void *ctx);
-```
-
-### `void onFrame(esp32p4_who_cb_t cb, void *ctx = nullptr)`
-
-| Param | Description |
+| Method | Notes |
 | --- | --- |
-| `cb` | Callback invoked when a frame is queued |
-| `ctx` | User pointer passed to callback |
+| `bool begin(&cam, queue_len = 2)` | |
+| `void onFrame(cb, ctx)` | |
+| `bool waitFrame(esp32p4_who_fb_t *out, timeout_ms)` | |
 
-Call **before** `begin()`.
-
-### `bool begin(ESP32P4_Camera *cam, uint8_t queue_len = 2)`
-
-| Param | Default | Description |
-| --- | --- | --- |
-| `cam` | — | Started camera |
-| `queue_len` | `2` | FreeRTOS queue depth |
-
-Starts a background task that captures and posts frames.
-
-### `bool waitFrame(esp32p4_who_fb_t *out, uint32_t timeout_ms = 1000)`
-
-| Param | Default | Description |
-| --- | --- | --- |
-| `out` | — | Filled with frame metadata |
-| `timeout_ms` | `1000` | Wait for queue item |
-
-**Returns:** `true` if a frame was received.
-
-### `bool running() const` / `void end()`
-
-Pipeline status / stop task + queue.
-
-```cpp
-ESP32P4_WhoPipeline who;
-
-static void on_frame(const esp32p4_who_fb_t *fb, void *) {
-  Serial.printf("cb %ux%u\n", fb->width, fb->height);
-}
-
-void setup() {
-  cam.begin(ESP32P4_BOARD_GUITION_M3);
-  who.onFrame(on_frame);
-  who.begin(&cam, 2);
-}
-
-void loop() {
-  esp32p4_who_fb_t fb{};
-  if (who.waitFrame(&fb, 2000)) {
-    Serial.printf("wait %ux%u\n", fb.width, fb.height);
-  }
-}
-```
+For models use `FaceAi` / `ObjectDetect`, not this queue. Example `07_WhoPipeline`.
 
 ---
 
-## PSRAM helpers
+## ESP32P4_VisionAi
+
+**Header:** `vision/ESP32P4_VisionAi.h` — letterbox RGB565 → model RGB888, box remap, NMS, result structs.
+
+```cpp
+ESP32P4_VisionAi vai;
+vai.letterboxRgb565(rgb565, sw, sh, dst, model_w, model_h, &lb);
+```
+
+Used internally by detect wrappers; also for custom ESP-DL (`19_CvColorBlobs`).
+
+---
+
+## ESP32P4_Debug
+
+**Header:** `debug/ESP32P4_Debug.h`
+
+```cpp
+ESP32P4_Debug dbg;
+dbg.begin("31_WiFiLiveAvFiles", ESP32P4_DBG_LIVE);
+dbg.poll();
+```
+
+NVS namespace `csi_dbg` overrides the sketch mask. Serial `d` / `d=<mask>` / `d=r`. MJPEG UI: `GET /debug`. Bits: [Enums](Enums-and-Types.md#debug-mask).
+
+---
+
+## PSRAM
 
 **Header:** `mem/ESP32P4_Psram.h`
 
-| Function | Params | Returns / notes |
-| --- | --- | --- |
-| `void *esp32p4_psram_alloc(size_t bytes, size_t align = ESP32P4_CACHE_ALIGN)` | bytes, align (default **128**) | PSRAM pointer or `nullptr` |
-| `void esp32p4_psram_free(void *ptr)` | pointer | Free |
-| `void esp32p4_psram_msync(void *ptr, size_t bytes)` | region | Cache sync before DMA/HW use |
-| `bool esp32p4_psram_available()` | — | PSRAM present |
-| `size_t esp32p4_psram_free_size()` | — | Free PSRAM bytes |
-
-```cpp
-if (!esp32p4_psram_available()) {
-  Serial.println("Enable PSRAM in board menu!");
-}
-void *p = esp32p4_psram_alloc(100 * 1024);
-esp32p4_psram_msync(p, 100 * 1024);
-esp32p4_psram_free(p);
-```
-
-Macro: `ESP32P4_CACHE_ALIGN` = `128` (override before include if needed).
-
----
-
-## ESP32P4_FaceDetect (ESP-IDF only)
-
-**Not available in Arduino IDE** (no esp-dl in prebuilt SDK).  
-**Header:** `idf_src/ESP32P4_FaceDetect.h`  
-**Example:** `idf_examples/08_FaceDetect`
-
-### `esp32p4_face_t`
-
-| Field | Type | Description |
-| --- | --- | --- |
-| `score` | `float` | Confidence |
-| `x`, `y`, `w`, `h` | `int` | Bounding box |
-| `landmarks[5][2]` | `int` | eyeL, mouthL, nose, eyeR, mouthR |
-| `has_landmarks` | `bool` | Landmark valid |
-
-### Models (`ESP32P4_FaceDetect::Model`)
-
-| Enum | Value | Notes |
-| --- | :---: | --- |
-| `MSRMNP_S8_V1` | 0 | Default two-stage, good P4 speed |
-| `ESPDET_PICO_224` | 1 | Pico 224 |
-| `ESPDET_PICO_416` | 2 | Pico 416 |
-
-### `bool begin(Model model = MSRMNP_S8_V1)`
-
-Loads HumanFaceDetect weights (flash rodata by default).
-
-### `int detect(const camera_fb_t *fb, esp32p4_face_t *out, int max_out)`
-
-| Param | Description |
+| Function | Notes |
 | --- | --- |
-| `fb` | RGB565 frame |
-| `out` | Array of faces |
-| `max_out` | Cap (array length) |
-
-**Returns:** Number of faces written (`0`…`max_out`).
-
-### `bool ready() const` / `void end()`
-
-```cpp
-#include "ESP32CSI_Vision.h"
-#include "ESP32P4_FaceDetect.h"
-
-ESP32P4_FaceDetect face;
-esp32p4_face_t faces[8];
-
-face.begin(ESP32P4_FaceDetect::MSRMNP_S8_V1);
-camera_fb_t *fb = cam.capture();
-int n = face.detect(fb, faces, 8);
-for (int i = 0; i < n; i++) {
-  Serial.printf("[%d] %.2f @%d,%d %dx%d\n",
-                i, faces[i].score, faces[i].x, faces[i].y, faces[i].w, faces[i].h);
-}
-cam.release(fb);
-```
-
-Build:
-
-```bat
-cd idf_examples/08_FaceDetect
-idf.py -DSDKCONFIG_DEFAULTS=sdkconfig.defaults.esp32p4 set-target esp32p4
-idf.py -p COMx build flash monitor
-```
+| `esp32p4_psram_alloc(bytes, align = 128)` | Cache-aligned. |
+| `esp32p4_psram_free(ptr)` | |
+| `esp32p4_psram_msync` / `writeback` | After DMA write / before DMA read. |
+| `esp32p4_psram_available` / `free_size` | |
+| `esp32p4_prefer_psram()` | `malloc` ≥ 1 KB prefers PSRAM. |
 
 ---
 
-## Compile-time preferences
+## WebFileManager
 
-| Macro | Default | Effect |
-| --- | --- | --- |
-| `ESP32P4_CAM_FB_MAX` | `3` | Max FB slots in `ESP32P4_Camera` |
-| `ESP32P4_CACHE_ALIGN` | `128` | Default PSRAM alignment |
-| `CONFIG_IDF_TARGET_ESP32P4` | from board | Required; else `#error` |
-
-```cpp
-#define ESP32P4_CAM_FB_MAX 3
-#include <ESP32CSI_Vision.h>
-```
+**Header:** `wfm/WebFileManager.h` — HTTP file browser (typically port 82). Ethernet helper: `esp32csi_wfm_eth()`. Camera UI: `stream.setFilesBrowserPort(82)`. Examples `14`, `18`, `30`, `31`.
 
 ---
 
-## End-to-end recipe (capture → JPEG → optional stream)
+## Compile-time knobs
 
-```cpp
-#include <WiFi.h>
-#include <ESP32CSI_Vision.h>
+| Macro | Effect |
+| --- | --- |
+| `ESP32P4_UVC_WIDTH` / `HEIGHT` / `FPS` | Gadget descriptor fallback |
+| `ESP32P4_FACE_MAX_NAMES` | Default 48 |
+| `ESP32P4_FACE_ENROLL_SAMPLES` | Default 5 |
+| `ESP32P4_ESPDL_ENABLE_SPEAKER` | Speaker verification |
 
-ESP32P4_Camera cam;
-ESP32P4_Jpeg jpeg;
-ESP32P4_MjpegServer stream;
-
-void setup() {
-  Serial.begin(115200);
-  cam.begin(ESP32P4_BOARD_GUITION_M3);
-  jpeg.begin(cam.width(), cam.height(), 40);
-
-  // … WiFi.begin … then either manual JPEG:
-  //   encode + HTTP yourself
-  // or:
-  stream.begin(&cam, 80, 35);
-}
-
-void loop() {
-  stream.loop();
-}
-```
-
-Next: [HTTP & Preferences](HTTP-and-Preferences.md) · [Enums & Types](Enums-and-Types.md)
+← [Getting Started](Getting-Started.md) · [Home](Home.md) →

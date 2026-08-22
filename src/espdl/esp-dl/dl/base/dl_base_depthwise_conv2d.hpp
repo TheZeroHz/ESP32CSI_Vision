@@ -23,3 +23,4 @@ template <typename feature_t, typename bias_t, typename buffer_t>
 void depthwise_conv2d(void *args_ptr);
 } // namespace base
 } // namespace dl
+

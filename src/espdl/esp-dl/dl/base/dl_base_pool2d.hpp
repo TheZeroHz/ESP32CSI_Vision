@@ -851,3 +851,4 @@ void max_pool_shell(PoolArgsType<feature_t> &args,
 }
 } // namespace base
 } // namespace dl
+

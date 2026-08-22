@@ -1,0 +1,8 @@
+version: "0.3.0"
+license: "MIT"
+description: cat detect model.
+url: https://github.com/espressif/esp-dl/tree/master/models/cat_detect
+dependencies: 
+  espressif/esp-dl:
+    version: "~3.3.0"
+    override_path: "../../esp-dl"

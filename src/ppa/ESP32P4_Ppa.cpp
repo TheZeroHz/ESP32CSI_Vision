@@ -1,10 +1,44 @@
 #include "ppa/ESP32P4_Ppa.h"
 
+#include <Arduino.h>
+#include "debug/ESP32P4_Debug.h"
 #include "driver/ppa.h"
-#include "esp_cache.h"
 #include "esp_heap_caps.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "mem/ESP32P4_Psram.h"
+#if CONFIG_IDF_TARGET_ESP32P4
+#include "hal/efuse_hal.h"
+#endif
 
 #include <string.h>
+
+static SemaphoreHandle_t s_ppa_done = nullptr;
+
+static bool IRAM_ATTR on_ppa_done(ppa_client_handle_t, ppa_event_data_t *, void *) {
+  BaseType_t woken = pdFALSE;
+  if (s_ppa_done) xSemaphoreGiveFromISR(s_ppa_done, &woken);
+  return woken == pdTRUE;
+}
+
+static bool nn_scale_565(const uint16_t *src, int sw, int sh, int ox, int oy, int cw, int ch,
+                         uint16_t *dst, int dw, int dh) {
+  if (!src || !dst || sw < 1 || sh < 1 || cw < 1 || ch < 1 || dw < 1 || dh < 1) return false;
+  for (int y = 0; y < dh; y++) {
+    int sy = oy + (int)(((int64_t)y * ch) / dh);
+    if (sy < 0) sy = 0;
+    if (sy >= sh) sy = sh - 1;
+    const uint16_t *row = src + (size_t)sy * (size_t)sw;
+    uint16_t *drow = dst + (size_t)y * (size_t)dw;
+    for (int x = 0; x < dw; x++) {
+      int sx = ox + (int)(((int64_t)x * cw) / dw);
+      if (sx < 0) sx = 0;
+      if (sx >= sw) sx = sw - 1;
+      drow[x] = row[sx];
+    }
+  }
+  return true;
+}
 
 ESP32P4_Ppa &ESP32P4_Ppa::cv() {
   static ESP32P4_Ppa inst;
@@ -12,16 +46,30 @@ ESP32P4_Ppa &ESP32P4_Ppa::cv() {
 }
 
 bool ESP32P4_Ppa::ensureSrm() {
-  if (_srm) return true;
+  if (_srm && !_srm_hung) return true;
+  if (_srm_pending) return _srm != nullptr;  // never unregister an in-flight DMA
+  if (_srm_hung && _srm_skip_until && (int32_t)(millis() - _srm_skip_until) < 0) return false;
+  if (_srm) {
+    (void)ppa_unregister_client((ppa_client_handle_t)_srm);
+    _srm = nullptr;
+    _srm_hung = false;
+    _srm_pending = false;
+  }
+  if (!s_ppa_done) s_ppa_done = xSemaphoreCreateBinary();
   ppa_client_config_t cfg = {};
   cfg.oper_type = PPA_OPERATION_SRM;
   cfg.max_pending_trans_num = 1;
   ppa_client_handle_t c = nullptr;
   if (ppa_register_client(&cfg, &c) != ESP_OK) return false;
+  ppa_event_callbacks_t cbs = {};
+  cbs.on_trans_done = on_ppa_done;
+  (void)ppa_client_register_event_callbacks(c, &cbs);
   _srm = c;
-  // BT.601-ish luma weights (sum 256) for RGB→GRAY SRM — optional on some IDF builds.
-  if (ppa_set_rgb2gray_formula(77, 150, 29) != ESP_OK) {
-    // GRAY convert may be unsupported; scale still works.
+#if CONFIG_IDF_TARGET_ESP32P4
+  if (efuse_hal_chip_revision() >= 300)
+#endif
+  {
+    (void)ppa_set_rgb2gray_formula(77, 150, 29);
   }
   return true;
 }
@@ -38,6 +86,55 @@ bool ESP32P4_Ppa::ensureFill() {
 }
 
 bool ESP32P4_Ppa::begin() { return ensureSrm(); }
+
+bool ESP32P4_Ppa::runSrmOp(void *opv) {
+  auto *op = (ppa_srm_oper_config_t *)opv;
+  if (!_srm || !op) return false;
+
+  // A previous timeout left DMA running. Wait it out — never start another
+  // trans or CPU-blit into the same buffers while PPA still owns them.
+  if (_srm_pending) {
+    if (xSemaphoreTake(s_ppa_done, pdMS_TO_TICKS(200)) == pdTRUE) {
+      _srm_pending = false;
+      _srm_hung = false;
+    } else {
+      return false;
+    }
+  }
+
+  if (_srm_hung && _srm_skip_until && (int32_t)(millis() - _srm_skip_until) < 0) return false;
+  if (_srm_hung && _srm_skip_until && (int32_t)(millis() - _srm_skip_until) >= 0) {
+    (void)ensureSrm();
+    if (!_srm) return false;
+  }
+  if (!s_ppa_done) return false;
+  (void)xSemaphoreTake(s_ppa_done, 0);
+  op->mode = PPA_TRANS_MODE_NON_BLOCKING;
+  if (ppa_do_scale_rotate_mirror((ppa_client_handle_t)_srm, op) != ESP_OK) {
+    _srm_hung = true;
+    _srm_skip_until = millis() + 5000;
+    return false;
+  }
+  _srm_pending = true;
+  if (xSemaphoreTake(s_ppa_done, pdMS_TO_TICKS(250)) != pdTRUE) {
+    _timeouts++;
+    CSI_STALL(ESP32P4_DBG_PPA, "scale timeout - waiting DMA");
+    // Do not CPU-blit or release CSI FB while DMA is live. Late complete is OK.
+    if (xSemaphoreTake(s_ppa_done, pdMS_TO_TICKS(2000)) == pdTRUE) {
+      _srm_pending = false;
+      _srm_hung = false;
+      CSI_STALL(ESP32P4_DBG_PPA, "late complete");
+      return true;
+    }
+    _srm_hung = true;
+    _srm_skip_until = millis() + 30000;
+    CSI_STALL(ESP32P4_DBG_PPA, "DMA hung - skip frame");
+    return false;
+  }
+  _srm_pending = false;
+  _srm_hung = false;
+  return true;
+}
 
 void ESP32P4_Ppa::end() {
   if (_srm) {
@@ -64,7 +161,7 @@ bool ESP32P4_Ppa::srmRaw(const void *src, int sw, int sh, int src_cm, void *dst,
   }
 
   size_t src_bytes = (size_t)sw * (size_t)sh * ((src_cm == (int)PPA_SRM_COLOR_MODE_GRAY8) ? 1u : 2u);
-  (void)esp_cache_msync((void *)src, src_bytes, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+  esp32p4_psram_writeback((void *)src, src_bytes);
 
   ppa_srm_oper_config_t op = {};
   op.in.buffer = src;
@@ -89,10 +186,10 @@ bool ESP32P4_Ppa::srmRaw(const void *src, int sw, int sh, int src_cm, void *dst,
   op.scale_y = sy;
   op.mirror_x = false;
   op.mirror_y = false;
-  op.mode = PPA_TRANS_MODE_BLOCKING;
+  op.mode = PPA_TRANS_MODE_NON_BLOCKING;
 
-  if (ppa_do_scale_rotate_mirror((ppa_client_handle_t)_srm, &op) != ESP_OK) return false;
-  (void)esp_cache_msync(dst, need, ESP_CACHE_MSYNC_FLAG_DIR_M2C);
+  if (!runSrmOp(&op)) return false;
+  esp32p4_psram_msync(dst, need);
   return true;
 }
 
@@ -102,7 +199,7 @@ bool ESP32P4_Ppa::srm(const camera_fb_t *src, uint8_t *dst, size_t dst_cap, uint
   size_t need = (size_t)dst_w * dst_h * 2;
   if (dst_cap < need) return false;
 
-  (void)esp_cache_msync(src->buf, (size_t)src->width * src->height * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+  esp32p4_psram_writeback(src->buf, (size_t)src->width * src->height * 2);
 
   ppa_srm_oper_config_t op = {};
   op.in.buffer = src->buf;
@@ -134,10 +231,10 @@ bool ESP32P4_Ppa::srm(const camera_fb_t *src, uint8_t *dst, size_t dst_cap, uint
   }
   op.mirror_x = mx;
   op.mirror_y = my;
-  op.mode = PPA_TRANS_MODE_BLOCKING;
+  op.mode = PPA_TRANS_MODE_NON_BLOCKING;
 
-  if (ppa_do_scale_rotate_mirror((ppa_client_handle_t)_srm, &op) != ESP_OK) return false;
-  (void)esp_cache_msync(dst, need, ESP_CACHE_MSYNC_FLAG_DIR_M2C);
+  if (!runSrmOp(&op)) return false;
+  esp32p4_psram_msync(dst, need);
   return true;
 }
 
@@ -148,7 +245,7 @@ bool ESP32P4_Ppa::scale(const camera_fb_t *src, uint8_t *dst, size_t dst_cap, ui
 
 bool ESP32P4_Ppa::scaleFit(const camera_fb_t *src, uint8_t *dst, size_t dst_cap, uint16_t dst_w,
                            uint16_t dst_h) {
-  if (!ensureSrm() || !src || !src->buf || !dst || dst_w < 16 || dst_h < 16) return false;
+  if (!src || !src->buf || !dst || dst_w < 16 || dst_h < 16) return false;
   // PPA needs even geometry; ÷16 only required for JPEG MCU (padded later if needed).
   if ((dst_w & 1) || (dst_h & 1)) return false;
   size_t need = (size_t)dst_w * (size_t)dst_h * 2;
@@ -190,7 +287,7 @@ bool ESP32P4_Ppa::scaleFit(const camera_fb_t *src, uint8_t *dst, size_t dst_cap,
   int off_y = (((int)dst_h - oh) / 2) & ~1;
 
   memset(dst, 0, need);
-  (void)esp_cache_msync(src->buf, (size_t)sw * (size_t)sh * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+  esp32p4_psram_writeback(src->buf, (size_t)sw * (size_t)sh * 2);
 
   // Prefer exact reciprocal scales when possible (e.g. 1920→1280 = 2/3).
   float use_sx = (float)ow / (float)cw;
@@ -220,21 +317,26 @@ bool ESP32P4_Ppa::scaleFit(const camera_fb_t *src, uint8_t *dst, size_t dst_cap,
   op.scale_y = use_sy;
   op.mirror_x = false;
   op.mirror_y = false;
-  op.mode = PPA_TRANS_MODE_BLOCKING;
+  op.mode = PPA_TRANS_MODE_NON_BLOCKING;
 
-  if (ppa_do_scale_rotate_mirror((ppa_client_handle_t)_srm, &op) != ESP_OK) return false;
+  if (!runSrmOp(&op)) {
+    if (_srm_pending) return false;
+    memset(dst, 0, need);
+    return nn_scale_565((const uint16_t *)src->buf, cw, ch, 0, 0, cw, ch, (uint16_t *)dst, (int)dst_w,
+                        (int)dst_h);
+  }
 
   size_t sync = need;
-  const size_t cl = 64;
+  const size_t cl = (size_t)ESP32P4_CACHE_ALIGN;
   sync = (sync + cl - 1) & ~(cl - 1);
   if (sync > dst_cap) sync = dst_cap;
-  (void)esp_cache_msync(dst, sync, ESP_CACHE_MSYNC_FLAG_DIR_M2C);
+  esp32p4_psram_msync(dst, sync);
   return true;
 }
 
 bool ESP32P4_Ppa::scaleCover(const camera_fb_t *src, uint8_t *dst, size_t dst_cap, uint16_t dst_w,
                              uint16_t dst_h) {
-  if (!ensureSrm() || !src || !src->buf || !dst || dst_w < 16 || dst_h < 16) return false;
+  if (!src || !src->buf || !dst || dst_w < 16 || dst_h < 16) return false;
   if ((dst_w & 1) || (dst_h & 1)) return false;
   size_t need = (size_t)dst_w * (size_t)dst_h * 2;
   if (dst_cap < need) return false;
@@ -263,8 +365,7 @@ bool ESP32P4_Ppa::scaleCover(const camera_fb_t *src, uint8_t *dst, size_t dst_ca
     ch = bh;
   }
 
-  memset(dst, 0, need);
-  (void)esp_cache_msync(src->buf, (size_t)sw * (size_t)sh * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+  esp32p4_psram_writeback(src->buf, (size_t)sw * (size_t)sh * 2);
 
   ppa_srm_oper_config_t op = {};
   op.in.buffer = src->buf;
@@ -289,15 +390,19 @@ bool ESP32P4_Ppa::scaleCover(const camera_fb_t *src, uint8_t *dst, size_t dst_ca
   op.scale_y = (float)dst_h / (float)ch;
   op.mirror_x = false;
   op.mirror_y = false;
-  op.mode = PPA_TRANS_MODE_BLOCKING;
+  op.mode = PPA_TRANS_MODE_NON_BLOCKING;
 
-  if (ppa_do_scale_rotate_mirror((ppa_client_handle_t)_srm, &op) != ESP_OK) return false;
+  if (!runSrmOp(&op)) {
+    if (_srm_pending) return false;
+    return nn_scale_565((const uint16_t *)src->buf, sw, sh, ox, oy, cw, ch, (uint16_t *)dst,
+                        (int)dst_w, (int)dst_h);
+  }
 
   size_t sync = need;
-  const size_t cl = 64;
+  const size_t cl = (size_t)ESP32P4_CACHE_ALIGN;
   sync = (sync + cl - 1) & ~(cl - 1);
   if (sync > dst_cap) sync = dst_cap;
-  (void)esp_cache_msync(dst, sync, ESP_CACHE_MSYNC_FLAG_DIR_M2C);
+  esp32p4_psram_msync(dst, sync);
   return true;
 }
 
@@ -380,7 +485,7 @@ bool ESP32P4_Ppa::fillRect565(uint16_t *img, int w, int h, int x, int y, int rw,
   if (rw <= 0 || rh <= 0) return false;
 
   size_t bytes = (size_t)w * (size_t)h * 2;
-  (void)esp_cache_msync(img, bytes, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+  esp32p4_psram_writeback(img, bytes);
 
   ppa_fill_oper_config_t op = {};
   op.out.buffer = img;
@@ -396,6 +501,6 @@ bool ESP32P4_Ppa::fillRect565(uint16_t *img, int w, int h, int x, int y, int rw,
   op.mode = PPA_TRANS_MODE_BLOCKING;
 
   if (ppa_do_fill((ppa_client_handle_t)_fill, &op) != ESP_OK) return false;
-  (void)esp_cache_msync(img, bytes, ESP_CACHE_MSYNC_FLAG_DIR_M2C);
+  esp32p4_psram_msync(img, bytes);
   return true;
 }

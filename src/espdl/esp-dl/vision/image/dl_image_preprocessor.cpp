@@ -1,4 +1,7 @@
 #include "dl_image_preprocessor.hpp"
+#include "esp_log.h"
+
+static const char *TAG_PRE = "ImagePreprocessor";
 
 namespace dl {
 namespace image {
@@ -11,6 +14,10 @@ ImagePreprocessor::ImagePreprocessor(Model *model,
     m_letter_box(false)
 {
     m_model_input = model->get_input(input_name);
+    if (!m_model_input) {
+        ESP_LOGE(TAG_PRE, "model has no input");
+        return;
+    }
     assert(m_model_input->dtype == DATA_TYPE_INT8 || m_model_input->dtype == DATA_TYPE_INT16);
     assert(m_model_input->shape[3] == 3);
     int quant_bits = (m_model_input->dtype == DATA_TYPE_INT8) ? 8 : 16;
@@ -39,6 +46,10 @@ ImagePreprocessor::ImagePreprocessor(Model *model, float mean, float std, const 
     m_letter_box(false)
 {
     m_model_input = model->get_input(input_name);
+    if (!m_model_input) {
+        ESP_LOGE(TAG_PRE, "model has no input");
+        return;
+    }
     assert(m_model_input->dtype == DATA_TYPE_INT8 || m_model_input->dtype == DATA_TYPE_INT16);
     assert(m_model_input->shape[3] == 1);
     int quant_bits = (m_model_input->dtype == DATA_TYPE_INT8) ? 8 : 16;
@@ -131,7 +142,10 @@ void ImagePreprocessor::preprocess(const img_t &img, const std::vector<int> &cro
             m_image_transformer.set_dst_img_border({border_top, border_bottom, border_left, border_right});
         }
     }
-    ESP_ERROR_CHECK(m_image_transformer.set_src_img(img).set_src_img_crop_area(crop_area).transform());
+    esp_err_t e = m_image_transformer.set_src_img(img).set_src_img_crop_area(crop_area).transform();
+    if (e != ESP_OK) {
+        ESP_LOGE(TAG_PRE, "transform failed (%s)", esp_err_to_name(e));
+    }
 }
 
 void ImagePreprocessor::preprocess(const img_t &img, const dl::math::Matrix<float> &M, bool inv)
@@ -140,3 +154,4 @@ void ImagePreprocessor::preprocess(const img_t &img, const dl::math::Matrix<floa
 }
 } // namespace image
 } // namespace dl
+

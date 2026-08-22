@@ -318,3 +318,4 @@ float reduce_mean(float *input, int32_t size, int32_t stride);
 
 } // namespace base
 } // namespace dl
+

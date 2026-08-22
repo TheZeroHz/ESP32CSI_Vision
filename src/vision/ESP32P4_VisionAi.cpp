@@ -155,9 +155,194 @@ void ESP32P4_VisionAi::drawDets(uint16_t *img, int w, int h, const esp32p4_det_t
   for (int i = 0; i < n; i++) {
     esp32p4_rect_t r{dets[i].x, dets[i].y, dets[i].w, dets[i].h};
     ESP32P4_Img::fillRect565(img, w, h, r, color, thickness);
-    char buf[24];
-    snprintf(buf, sizeof(buf), "%d %.2f", dets[i].category, (double)dets[i].score);
+    char buf[40];
+    const char *lab = dets[i].label && dets[i].label[0] ? dets[i].label : nullptr;
+    if (lab)
+      snprintf(buf, sizeof(buf), "%s %.2f", lab, (double)dets[i].score);
+    else
+      snprintf(buf, sizeof(buf), "%d %.2f", dets[i].category, (double)dets[i].score);
     ESP32P4_Cv::putText(img, w, h, dets[i].x, dets[i].y > 10 ? dets[i].y - 10 : dets[i].y + 2,
                         buf, color, 1);
   }
+}
+
+static void jsonEsc(char *dst, size_t cap, const char *s) {
+  if (!dst || cap < 3) return;
+  size_t o = 0;
+  dst[o++] = '"';
+  if (s) {
+    for (; *s && o + 2 < cap; ++s) {
+      char c = *s;
+      if (c == '"' || c == '\\') {
+        if (o + 3 >= cap) break;
+        dst[o++] = '\\';
+      }
+      if ((unsigned char)c < 32) continue;
+      dst[o++] = c;
+    }
+  }
+  if (o + 1 < cap) dst[o++] = '"';
+  dst[o] = '\0';
+}
+
+size_t ESP32P4_VisionAi::detsToJson(const esp32p4_det_t *dets, int n, char *buf, size_t cap, int ms) {
+  if (!buf || cap < 16) return 0;
+  if (n < 0) n = 0;
+  size_t o = 0;
+  auto app = [&](const char *s) {
+    if (!s) return;
+    size_t k = strlen(s);
+    if (o + k >= cap) k = cap - 1 - o;
+    if (k) {
+      memcpy(buf + o, s, k);
+      o += k;
+    }
+  };
+  char tmp[96];
+  int nw = snprintf(tmp, sizeof(tmp), "{\"n\":%d", n);
+  (void)nw;
+  app(tmp);
+  if (ms >= 0) {
+    snprintf(tmp, sizeof(tmp), ",\"ms\":%d", ms);
+    app(tmp);
+  }
+  app(",\"dets\":[");
+  for (int i = 0; i < n && dets; i++) {
+    if (i) app(",");
+    char lab[64];
+    jsonEsc(lab, sizeof(lab), dets[i].label ? dets[i].label : "");
+    snprintf(tmp, sizeof(tmp),
+             "{\"label\":%s,\"class\":%d,\"score\":%.3f,\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d}", lab,
+             dets[i].category, (double)dets[i].score, dets[i].x, dets[i].y, dets[i].w, dets[i].h);
+    app(tmp);
+  }
+  app("]}");
+  if (o < cap) buf[o] = '\0';
+  else buf[cap - 1] = '\0';
+  return o < cap ? o : cap - 1;
+}
+
+size_t ESP32P4_VisionAi::detsToLine(const esp32p4_det_t *dets, int n, char *buf, size_t cap) {
+  if (!buf || cap < 2) return 0;
+  buf[0] = '\0';
+  if (!dets || n <= 0) return 0;
+  size_t o = 0;
+  for (int i = 0; i < n; i++) {
+    char one[96];
+    const char *lab = (dets[i].label && dets[i].label[0]) ? dets[i].label : "?";
+    snprintf(one, sizeof(one), "%s%s %.2f @ %d,%d %dx%d", i ? " · " : "", lab, (double)dets[i].score,
+             dets[i].x, dets[i].y, dets[i].w, dets[i].h);
+    size_t k = strlen(one);
+    if (o + k >= cap) break;
+    memcpy(buf + o, one, k);
+    o += k;
+    buf[o] = '\0';
+  }
+  return o;
+}
+
+size_t ESP32P4_VisionAi::clsToJson(const esp32p4_cls_t *hits, int n, char *buf, size_t cap, int ms) {
+  if (!buf || cap < 16) return 0;
+  if (n < 0) n = 0;
+  size_t o = 0;
+  auto app = [&](const char *s) {
+    size_t k = s ? strlen(s) : 0;
+    if (o + k >= cap) k = cap - 1 - o;
+    if (k) {
+      memcpy(buf + o, s, k);
+      o += k;
+    }
+  };
+  char tmp[96];
+  snprintf(tmp, sizeof(tmp), "{\"n\":%d", n);
+  app(tmp);
+  if (ms >= 0) {
+    snprintf(tmp, sizeof(tmp), ",\"ms\":%d", ms);
+    app(tmp);
+  }
+  app(",\"cls\":[");
+  for (int i = 0; i < n && hits; i++) {
+    if (i) app(",");
+    char lab[64];
+    jsonEsc(lab, sizeof(lab), hits[i].label ? hits[i].label : "");
+    snprintf(tmp, sizeof(tmp), "{\"label\":%s,\"score\":%.3f}", lab, (double)hits[i].score);
+    app(tmp);
+  }
+  app("]}");
+  if (o < cap) buf[o] = '\0';
+  else buf[cap - 1] = '\0';
+  return o < cap ? o : cap - 1;
+}
+
+size_t ESP32P4_VisionAi::ocrToJson(const esp32p4_ocr_t *hits, int n, char *buf, size_t cap, int ms) {
+  if (!buf || cap < 16) return 0;
+  if (n < 0) n = 0;
+  size_t o = 0;
+  auto app = [&](const char *s) {
+    size_t k = s ? strlen(s) : 0;
+    if (o + k >= cap) k = cap - 1 - o;
+    if (k) {
+      memcpy(buf + o, s, k);
+      o += k;
+    }
+  };
+  char tmp[160];
+  snprintf(tmp, sizeof(tmp), "{\"n\":%d", n);
+  app(tmp);
+  if (ms >= 0) {
+    snprintf(tmp, sizeof(tmp), ",\"ms\":%d", ms);
+    app(tmp);
+  }
+  app(",\"ocr\":[");
+  for (int i = 0; i < n && hits; i++) {
+    if (i) app(",");
+    char lab[128];
+    jsonEsc(lab, sizeof(lab), hits[i].text);
+    snprintf(tmp, sizeof(tmp),
+             "{\"text\":%s,\"score\":%.3f,\"quad\":[%d,%d,%d,%d,%d,%d,%d,%d]}", lab,
+             (double)hits[i].score, hits[i].points[0], hits[i].points[1], hits[i].points[2],
+             hits[i].points[3], hits[i].points[4], hits[i].points[5], hits[i].points[6],
+             hits[i].points[7]);
+    app(tmp);
+  }
+  app("]}");
+  if (o < cap) buf[o] = '\0';
+  else buf[cap - 1] = '\0';
+  return o < cap ? o : cap - 1;
+}
+
+size_t ESP32P4_VisionAi::gestureToJson(const esp32p4_gesture_t *hits, int n, char *buf, size_t cap,
+                                       int ms) {
+  if (!buf || cap < 16) return 0;
+  if (n < 0) n = 0;
+  size_t o = 0;
+  auto app = [&](const char *s) {
+    size_t k = s ? strlen(s) : 0;
+    if (o + k >= cap) k = cap - 1 - o;
+    if (k) {
+      memcpy(buf + o, s, k);
+      o += k;
+    }
+  };
+  char tmp[160];
+  snprintf(tmp, sizeof(tmp), "{\"n\":%d", n);
+  app(tmp);
+  if (ms >= 0) {
+    snprintf(tmp, sizeof(tmp), ",\"ms\":%d", ms);
+    app(tmp);
+  }
+  app(",\"gesture\":[");
+  for (int i = 0; i < n && hits; i++) {
+    if (i) app(",");
+    char lab[64];
+    jsonEsc(lab, sizeof(lab), hits[i].label ? hits[i].label : "");
+    snprintf(tmp, sizeof(tmp),
+             "{\"label\":%s,\"score\":%.3f,\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d}", lab,
+             (double)hits[i].score, hits[i].hand.x, hits[i].hand.y, hits[i].hand.w, hits[i].hand.h);
+    app(tmp);
+  }
+  app("]}");
+  if (o < cap) buf[o] = '\0';
+  else buf[cap - 1] = '\0';
+  return o < cap ? o : cap - 1;
 }

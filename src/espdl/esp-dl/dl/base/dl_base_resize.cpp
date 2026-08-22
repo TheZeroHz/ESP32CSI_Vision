@@ -310,3 +310,4 @@ void resize<int16_t>(void *args_ptr)
 
 } // namespace base
 } // namespace dl
+

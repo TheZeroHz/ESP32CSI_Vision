@@ -13,7 +13,7 @@ DataBase::DataBase(const std::string &db_path, int feat_len) : m_db_path(db_path
     struct stat st;
     if (stat(db_path.c_str(), &st) == 0 && st.st_size >= (off_t)sizeof(database_meta)) {
         if (load_database_from_storage(feat_len) != ESP_OK) {
-            ESP_LOGW(TAG, "db load failed — recreating empty %s", db_path.c_str());
+            ESP_LOGW(TAG, "db load failed â€” recreating empty %s", db_path.c_str());
             clear_all_feats_in_memory();
             create_empty_database_in_storage(feat_len);
         }
@@ -143,8 +143,8 @@ esp_err_t DataBase::enroll_feat(TensorBase *feat)
 
     FILE *f = fopen(m_db_path.c_str(), "rb+");
     if (!f) {
-        // Missing/unwritable file — recreate empty DB then reopen.
-        ESP_LOGW(TAG, "db open rb+ failed (%s) — recreating", m_db_path.c_str());
+        // Missing/unwritable file â€” recreate empty DB then reopen.
+        ESP_LOGW(TAG, "db open rb+ failed (%s) â€” recreating", m_db_path.c_str());
         if (create_empty_database_in_storage(m_meta.feat_len) != ESP_OK) {
             heap_caps_free(feat_copy);
             ESP_LOGE(TAG, "Failed to create db at %s", m_db_path.c_str());
@@ -327,3 +327,4 @@ void DataBase::print()
 
 } // namespace recognition
 } // namespace dl
+

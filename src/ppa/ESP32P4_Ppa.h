@@ -45,6 +45,10 @@ class ESP32P4_Ppa {
   /** Shared singleton for CV (separate from stream scaling client). */
   static ESP32P4_Ppa &cv();
 
+  /** True while a timed-out PPA DMA is still running — do not reuse src/dst. */
+  bool srmBusy() const { return _srm_pending; }
+  uint32_t timeoutCount() const { return _timeouts; }
+
  private:
   bool ensureSrm();
   bool ensureFill();
@@ -55,4 +59,9 @@ class ESP32P4_Ppa {
 
   void *_srm = nullptr;
   void *_fill = nullptr;
+  bool _srm_hung = false;
+  bool _srm_pending = false;
+  uint32_t _srm_skip_until = 0;
+  uint32_t _timeouts = 0;
+  bool runSrmOp(void *op);
 };

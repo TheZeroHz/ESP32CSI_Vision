@@ -43,25 +43,6 @@ static const esp32p4_cam_sensor_ops_t kOps = {
     nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
 }  // namespace
 
-namespace imx462_stub {
-static const uint8_t kAddrs[] = {0x1A, 0x10, 0};
-static bool detect(uint8_t *o) {
-  for (const uint8_t *p = kAddrs; *p; ++p) {
-    if (!esp32p4_sccb_ping(*p)) continue;
-    uint16_t id = 0;
-    if (esp32p4_sccb_read16(*p, 0x3F12, &id) && id == 0x0462) {
-      if (o) *o = *p;
-      return true;
-    }
-  }
-  return false;
-}
-static const esp32p4_cam_sensor_ops_t kOps = {
-    ESP32P4_SENSOR_IMX462, "IMX462", ESP32P4_CAM_SUPPORT_DETECT_ONLY, kAddrs, detect, stub_configure,
-    stub_stream_on, stub_stream_off, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-}  // namespace
-
 namespace arducam_imx500_stub {
 static const uint8_t kAddrs[] = {0x0C, 0x1A, 0};
 static bool detect(uint8_t *o) {
@@ -83,7 +64,6 @@ static const esp32p4_cam_sensor_ops_t kOps = {
 
 const esp32p4_cam_sensor_ops_t *ov7251_sensor_ops(void) { return &ov7251_stub::kOps; }
 const esp32p4_cam_sensor_ops_t *imx296_sensor_ops(void) { return &imx296_stub::kOps; }
-const esp32p4_cam_sensor_ops_t *imx462_sensor_ops(void) { return &imx462_stub::kOps; }
 const esp32p4_cam_sensor_ops_t *arducam_imx500_sensor_ops(void) {
   return &arducam_imx500_stub::kOps;
 }

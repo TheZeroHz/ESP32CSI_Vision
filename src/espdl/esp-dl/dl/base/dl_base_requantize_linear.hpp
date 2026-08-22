@@ -21,3 +21,4 @@ template <typename out_feature_t, typename in_feature_t>
 void requantize_linear(void *const args_ptr);
 } // namespace base
 } // namespace dl
+

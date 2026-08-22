@@ -4,6 +4,9 @@
 #include <string.h>
 #include <vector>
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "audio/ESP32P4_AacEnc.h"
 #include "mem/ESP32P4_Psram.h"
 
 struct NalRef {
@@ -112,21 +115,118 @@ static std::vector<uint8_t> make_hdlr(const char *type, const char *name) {
   return hdlr;
 }
 
+static uint8_t aac_sfi(uint32_t rate) {
+  static const uint32_t kRates[] = {96000, 88200, 64000, 48000, 44100, 32000,
+                                    24000, 22050, 16000, 12000, 11025, 8000};
+  for (uint8_t i = 0; i < 12; i++) {
+    if (kRates[i] == rate) return i;
+  }
+  return 8;
+}
+
+static void wdesc(std::vector<uint8_t> &b, uint8_t tag, const std::vector<uint8_t> &payload) {
+  b.push_back(tag);
+  size_t n = payload.size();
+  if (n < 128) {
+    b.push_back((uint8_t)n);
+  } else {
+    b.push_back((uint8_t)(0x80 | ((n >> 21) & 0x7F)));
+    b.push_back((uint8_t)(0x80 | ((n >> 14) & 0x7F)));
+    b.push_back((uint8_t)(0x80 | ((n >> 7) & 0x7F)));
+    b.push_back((uint8_t)(n & 0x7F));
+  }
+  wbytes(b, payload.data(), payload.size());
+}
+
+static std::vector<uint8_t> make_esds(uint32_t rate_hz, uint16_t channels, uint32_t bitrate) {
+  uint8_t asc[2];
+  uint16_t bits = (uint16_t)((2u << 11) | ((uint16_t)aac_sfi(rate_hz) << 7) | ((channels & 0xF) << 3));
+  asc[0] = (uint8_t)(bits >> 8);
+  asc[1] = (uint8_t)bits;
+
+  std::vector<uint8_t> dsi_body(asc, asc + 2);
+  std::vector<uint8_t> dsi;
+  wdesc(dsi, 0x05, dsi_body);
+
+  std::vector<uint8_t> dec;
+  dec.push_back(0x40);
+  dec.push_back(0x15);
+  dec.push_back(0);
+  dec.push_back(1);
+  dec.push_back(0);
+  w32(dec, bitrate);
+  w32(dec, bitrate);
+  wbytes(dec, dsi.data(), dsi.size());
+  std::vector<uint8_t> dec_box;
+  wdesc(dec_box, 0x04, dec);
+
+  std::vector<uint8_t> sl{0x02};
+  std::vector<uint8_t> sl_box;
+  wdesc(sl_box, 0x06, sl);
+
+  std::vector<uint8_t> es;
+  w16(es, 0);
+  es.push_back(0);
+  wbytes(es, dec_box.data(), dec_box.size());
+  wbytes(es, sl_box.data(), sl_box.size());
+  std::vector<uint8_t> es_box;
+  wdesc(es_box, 0x03, es);
+
+  std::vector<uint8_t> esds_body;
+  esds_body.insert(esds_body.end(), {0, 0, 0, 0});
+  wbytes(esds_body, es_box.data(), es_box.size());
+  std::vector<uint8_t> esds;
+  box(esds, "esds", esds_body);
+  return esds;
+}
+
+static File mp4_open_retry(fs::FS &fs, const char *path, const char *mode) {
+  File f;
+  for (int i = 0; i < 10; i++) {
+    f = fs.open(path, mode);
+    if (f) return f;
+    vTaskDelay(pdMS_TO_TICKS(40));
+  }
+  return f;
+}
+
+static bool mp4_write_all(File &out, const uint8_t *p, size_t n) {
+  while (n) {
+    size_t chunk = n > 4096 ? 4096 : n;
+    size_t w = out.write(p, chunk);
+    if (!w) {
+      vTaskDelay(pdMS_TO_TICKS(30));
+      w = out.write(p, chunk);
+    }
+    if (!w) return false;
+    p += w;
+    n -= w;
+    vTaskDelay(1);
+  }
+  return true;
+}
+
 bool esp32p4_h264_annexb_to_mp4(fs::FS &fs, const char *h264_path, const char *mp4_path, uint16_t width,
                                 uint16_t height, uint32_t duration_ms) {
   return esp32p4_h264_annexb_to_mp4(fs, h264_path, mp4_path, width, height, duration_ms, nullptr, 0,
-                                    1);
+                                    1, nullptr, 0, nullptr);
+}
+
+static void mux_set_pct(volatile uint8_t *p, uint8_t v) {
+  if (p) *p = v;
 }
 
 bool esp32p4_h264_annexb_to_mp4(fs::FS &fs, const char *h264_path, const char *mp4_path, uint16_t width,
                                 uint16_t height, uint32_t duration_ms, const char *pcm_path,
-                                uint32_t pcm_rate_hz, uint16_t pcm_channels) {
+                                uint32_t pcm_rate_hz, uint16_t pcm_channels, const uint8_t *pcm_ram,
+                                size_t pcm_ram_sz, volatile uint8_t *progress) {
+  mux_set_pct(progress, 3);
   if (!h264_path || !mp4_path) return false;
   if (duration_ms < 1) duration_ms = 1;
   if (pcm_channels == 0) pcm_channels = 1;
   if (pcm_channels > 2) pcm_channels = 2;
 
-  File in = fs.open(h264_path, FILE_READ);
+  File in = mp4_open_retry(fs, h264_path, FILE_READ);
   if (!in) {
     Serial.printf("MP4: open %s failed\n", h264_path);
     return false;
@@ -150,6 +250,7 @@ bool esp32p4_h264_annexb_to_mp4(fs::FS &fs, const char *h264_path, const char *m
     return false;
   }
   in.close();
+  mux_set_pct(progress, 18);
 
   std::vector<NalRef> nals;
   if (!parse_annexb(buf, sz, nals)) {
@@ -183,35 +284,62 @@ bool esp32p4_h264_annexb_to_mp4(fs::FS &fs, const char *h264_path, const char *m
     return false;
   }
 
-  // Optional PCM
+  mux_set_pct(progress, 38);
+
+  // Optional mic PCM → AAC-LC (browsers reject sowt/PCM in MP4).
   uint8_t *pcm = nullptr;
   size_t pcm_sz = 0;
-  if (pcm_path && pcm_path[0] && pcm_rate_hz >= 8000) {
-    File af = fs.open(pcm_path, FILE_READ);
+  bool pcm_owned = false;
+  if (pcm_ram && pcm_ram_sz >= 320 && pcm_rate_hz >= 8000) {
+    pcm = (uint8_t *)pcm_ram;
+    pcm_sz = pcm_ram_sz;
+  } else if (pcm_path && pcm_path[0] && pcm_rate_hz >= 8000) {
+    File af = mp4_open_retry(fs, pcm_path, FILE_READ);
     if (af) {
       pcm_sz = af.size();
       if (pcm_sz > 0 && pcm_sz <= 32 * 1024 * 1024) {
         pcm = (uint8_t *)esp32p4_psram_alloc(pcm_sz);
         if (pcm && af.read(pcm, pcm_sz) == (int)pcm_sz) {
-          // ok
+          pcm_owned = true;
         } else {
           esp32p4_psram_free(pcm);
           pcm = nullptr;
           pcm_sz = 0;
-          Serial.println("MP4: PCM read/alloc failed — video-only");
+          Serial.println("MP4: PCM read/alloc failed - video-only");
         }
       } else {
-        Serial.println("MP4: bad PCM size — video-only");
+        Serial.println("MP4: bad PCM size - video-only");
         pcm_sz = 0;
       }
       af.close();
     } else {
-      Serial.printf("MP4: open PCM %s failed — video-only\n", pcm_path);
+      Serial.printf("MP4: open PCM %s failed - video-only\n", pcm_path);
     }
   }
 
+  std::vector<uint8_t> aac;
+  std::vector<uint32_t> aac_sizes;
+  uint32_t aac_bitrate = 32000;
+  mux_set_pct(progress, 48);
+  if (pcm && pcm_sz >= 320) {
+    if (pcm_rate_hz >= 44100) aac_bitrate = 64000;
+    else if (pcm_rate_hz >= 22050) aac_bitrate = 48000;
+    const size_t nsamp = pcm_sz / 2;
+    if (!esp32p4_pcm16_to_aac_lc((const int16_t *)pcm, nsamp, pcm_rate_hz, pcm_channels, aac_bitrate,
+                                 aac, aac_sizes)) {
+      Serial.println("MP4: AAC encode failed - video-only");
+      aac.clear();
+      aac_sizes.clear();
+    }
+  }
+  if (pcm && pcm_owned) {
+    esp32p4_psram_free(pcm);
+    pcm = nullptr;
+  }
+  mux_set_pct(progress, 72);
+
   std::vector<uint8_t> mdat_payload;
-  mdat_payload.reserve(sz + pcm_sz);
+  mdat_payload.reserve(sz + aac.size());
   std::vector<uint32_t> sample_sizes;
   sample_sizes.reserve(samples.size());
   for (const auto &s : samples) {
@@ -220,8 +348,8 @@ bool esp32p4_h264_annexb_to_mp4(fs::FS &fs, const char *h264_path, const char *m
     sample_sizes.push_back(4 + s.len);
   }
   const uint32_t video_mdat_bytes = (uint32_t)mdat_payload.size();
-  if (pcm && pcm_sz) {
-    wbytes(mdat_payload, pcm, pcm_sz);
+  if (!aac.empty()) {
+    wbytes(mdat_payload, aac.data(), aac.size());
   }
 
   std::vector<uint8_t> avcC;
@@ -239,19 +367,18 @@ bool esp32p4_h264_annexb_to_mp4(fs::FS &fs, const char *h264_path, const char *m
 
   const uint32_t movie_timescale = 1000;
   const uint32_t video_duration = duration_ms;
-  const uint32_t bytes_per_sample = (uint32_t)pcm_channels * 2;
-  const uint32_t pcm_frames =
-      (pcm && pcm_sz && bytes_per_sample) ? (uint32_t)(pcm_sz / bytes_per_sample) : 0;
+  const uint32_t aac_frames = (uint32_t)aac_sizes.size();
+  const uint32_t audio_duration_units = aac_frames * 1024u;
   const uint32_t audio_duration_ms =
-      (pcm_frames && pcm_rate_hz)
-          ? (uint32_t)((uint64_t)pcm_frames * 1000ULL / (uint64_t)pcm_rate_hz)
+      (aac_frames && pcm_rate_hz)
+          ? (uint32_t)((uint64_t)audio_duration_units * 1000ULL / (uint64_t)pcm_rate_hz)
           : 0;
   const uint32_t movie_duration =
       audio_duration_ms > video_duration ? audio_duration_ms : video_duration;
   const uint32_t sample_delta =
       samples.size() ? (uint32_t)((video_duration + samples.size() - 1) / samples.size()) : 1;
   const uint32_t matrix[9] = {0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000};
-  const bool has_audio = pcm_frames > 0;
+  const bool has_audio = aac_frames > 0;
 
   std::vector<uint8_t> ftyp;
   {
@@ -437,10 +564,9 @@ bool esp32p4_h264_annexb_to_mp4(fs::FS &fs, const char *h264_path, const char *m
   std::vector<uint8_t> trak;
   box(trak, "trak", trak_payload);
 
-  // ---- optional audio trak (PCM sowt) ----
+  // ---- optional audio trak (AAC-LC mp4a) ----
   std::vector<uint8_t> a_trak;
   if (has_audio) {
-    // One audio sample = entire PCM buffer (simple, VLC/ffmpeg friendly).
     std::vector<uint8_t> a_mdhd;
     {
       std::vector<uint8_t> body;
@@ -448,7 +574,7 @@ bool esp32p4_h264_annexb_to_mp4(fs::FS &fs, const char *h264_path, const char *m
       w32(body, 0);
       w32(body, 0);
       w32(body, pcm_rate_hz);
-      w32(body, pcm_frames);
+      w32(body, audio_duration_units);
       w16(body, 0x55C4);
       w16(body, 0);
       box(a_mdhd, "mdhd", body);
@@ -466,34 +592,37 @@ bool esp32p4_h264_annexb_to_mp4(fs::FS &fs, const char *h264_path, const char *m
 
     std::vector<uint8_t> a_stsd;
     {
-      std::vector<uint8_t> sowt_body;
-      for (int i = 0; i < 6; i++) sowt_body.push_back(0);
-      w16(sowt_body, 1);  // data ref
-      w16(sowt_body, 0);  // version
-      w16(sowt_body, 0);  // revision
-      w32(sowt_body, 0);  // vendor
-      w16(sowt_body, pcm_channels);
-      w16(sowt_body, 16);  // sample size
-      w16(sowt_body, 0);
-      w16(sowt_body, 0);
-      w32(sowt_body, pcm_rate_hz << 16);
-      std::vector<uint8_t> sowt;
-      box(sowt, "sowt", sowt_body);
+      std::vector<uint8_t> esds = make_esds(pcm_rate_hz, pcm_channels, aac_bitrate);
+      std::vector<uint8_t> mp4a_body;
+      for (int i = 0; i < 6; i++) mp4a_body.push_back(0);
+      w16(mp4a_body, 1);
+      w16(mp4a_body, 0);
+      w16(mp4a_body, 0);
+      w32(mp4a_body, 0);
+      w16(mp4a_body, pcm_channels);
+      w16(mp4a_body, 16);
+      w16(mp4a_body, 0);
+      w16(mp4a_body, 0);
+      w32(mp4a_body, pcm_rate_hz << 16);
+      wbytes(mp4a_body, esds.data(), esds.size());
+      std::vector<uint8_t> mp4a;
+      box(mp4a, "mp4a", mp4a_body);
       std::vector<uint8_t> body;
       body.insert(body.end(), {0, 0, 0, 0});
       w32(body, 1);
-      wbytes(body, sowt.data(), sowt.size());
+      wbytes(body, mp4a.data(), mp4a.size());
       box(a_stsd, "stsd", body);
     }
 
-    std::vector<uint8_t> a_stts = make_stts(1, pcm_frames);
-    std::vector<uint8_t> a_stsc = make_stsc(1);
+    std::vector<uint8_t> a_stts = make_stts(aac_frames, 1024);
+    std::vector<uint8_t> a_stsc = make_stsc(aac_frames);
     std::vector<uint8_t> a_stsz;
     {
       std::vector<uint8_t> body;
       body.insert(body.end(), {0, 0, 0, 0});
-      w32(body, (uint32_t)pcm_sz);  // constant size
-      w32(body, 1);
+      w32(body, 0);
+      w32(body, aac_frames);
+      for (uint32_t s : aac_sizes) w32(body, s);
       box(a_stsz, "stsz", body);
     }
     std::vector<uint8_t> a_stco = make_stco(audio_data_offset);
@@ -574,29 +703,68 @@ bool esp32p4_h264_annexb_to_mp4(fs::FS &fs, const char *h264_path, const char *m
   std::vector<uint8_t> moov;
   box(moov, "moov", moov_payload);
 
-  std::vector<uint8_t> mdat;
-  w32(mdat, (uint32_t)(8 + mdat_payload.size()));
-  wfourcc(mdat, "mdat");
-  wbytes(mdat, mdat_payload.data(), mdat_payload.size());
+  uint8_t mdat_hdr[8];
+  const uint32_t mdat_box = (uint32_t)(8 + mdat_payload.size());
+  mdat_hdr[0] = (uint8_t)(mdat_box >> 24);
+  mdat_hdr[1] = (uint8_t)(mdat_box >> 16);
+  mdat_hdr[2] = (uint8_t)(mdat_box >> 8);
+  mdat_hdr[3] = (uint8_t)mdat_box;
+  mdat_hdr[4] = 'm';
+  mdat_hdr[5] = 'd';
+  mdat_hdr[6] = 'a';
+  mdat_hdr[7] = 't';
+  const size_t expect = ftyp.size() + sizeof(mdat_hdr) + mdat_payload.size() + moov.size();
+  mux_set_pct(progress, 88);
 
-  File out = fs.open(mp4_path, FILE_WRITE);
+  char tmp_path[96];
+  snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", mp4_path);
+  fs.remove(tmp_path);
+  fs.remove(mp4_path);
+
+  vTaskDelay(pdMS_TO_TICKS(40));
+  File out = mp4_open_retry(fs, tmp_path, FILE_WRITE);
   if (!out) {
     esp32p4_psram_free(buf);
-    esp32p4_psram_free(pcm);
-    Serial.printf("MP4: open %s failed\n", mp4_path);
+    if (pcm && pcm_owned) esp32p4_psram_free(pcm);
+    Serial.printf("MP4: open %s failed\n", tmp_path);
     return false;
   }
-  out.write(ftyp.data(), ftyp.size());
-  out.write(mdat.data(), mdat.size());
-  out.write(moov.data(), moov.size());
+  bool wr_ok = mp4_write_all(out, ftyp.data(), ftyp.size()) &&
+               mp4_write_all(out, mdat_hdr, sizeof(mdat_hdr)) &&
+               mp4_write_all(out, mdat_payload.data(), mdat_payload.size()) &&
+               mp4_write_all(out, moov.data(), moov.size());
+  out.flush();
   out.close();
+  File chk = fs.open(tmp_path, FILE_READ);
+  const size_t got = chk ? chk.size() : 0;
+  if (chk) chk.close();
   esp32p4_psram_free(buf);
-  esp32p4_psram_free(pcm);
+  buf = nullptr;
+  if (pcm && pcm_owned) {
+    esp32p4_psram_free(pcm);
+    pcm = nullptr;
+  }
+
+  if (!wr_ok || got != expect || got < 64) {
+    fs.remove(tmp_path);
+    fs.remove(mp4_path);
+    Serial.printf("MP4: write failed (got=%u expect=%u wr=%u)\n", (unsigned)got, (unsigned)expect,
+                  wr_ok ? 1u : 0u);
+    return false;
+  }
+  if (!fs.rename(tmp_path, mp4_path)) {
+    fs.remove(mp4_path);
+    if (!fs.rename(tmp_path, mp4_path)) {
+      Serial.printf("MP4: rename %s -> %s failed (keeping temp)\n", tmp_path, mp4_path);
+      return false;
+    }
+  }
 
   float sec = movie_duration / 1000.0f;
   float afps = sec > 0.001f ? (samples.size() / (video_duration / 1000.0f)) : 0;
-  Serial.printf("MP4: wrote %s  frames=%u  duration=%.2fs  avg_fps=%.1f  audio=%s (%u samples @ %u Hz)\n",
-                mp4_path, (unsigned)samples.size(), sec, afps, has_audio ? "pcm" : "none",
-                (unsigned)pcm_frames, (unsigned)pcm_rate_hz);
+  Serial.printf("MP4: wrote %s  frames=%u  duration=%.2fs  avg_fps=%.1f  audio=%s (%u aac @ %u Hz)\n",
+                mp4_path, (unsigned)samples.size(), sec, afps, has_audio ? "aac" : "none",
+                (unsigned)aac_frames, (unsigned)pcm_rate_hz);
+  mux_set_pct(progress, 100);
   return true;
 }

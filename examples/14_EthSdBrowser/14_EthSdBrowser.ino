@@ -19,7 +19,15 @@
 #define HTTP_UPLOAD_BUFLEN 16384
 #endif
 
-#include <ESP32CSI_Vision.h>
+#include "board_config.h"
+
+#ifndef APP_NAME
+#define APP_NAME "14_EthSdBrowser"
+#endif
+#ifndef APP_DEBUG
+#define APP_DEBUG ESP32P4_DBG_SD | ESP32P4_DBG_NET
+#endif
+
 #include <LittleFS.h>
 
 // CSI Vision SD (Guition M3 pins / LDO)
@@ -38,14 +46,17 @@ WfmStorageLittleFS flashVol(true);
 WfmNetwork net;
 WebFileManager wfm(sdVol);
 
+ESP32P4_Debug dbg;
+
 void setup() {
   Serial.begin(115200);
   delay(800);
   Serial.println();
   Serial.println("=== 14_EthSdBrowser (WebFileManager) ===");
+  dbg.begin(APP_NAME, APP_DEBUG);
 
   // --- Storage ---
-  if (!sd.begin(ESP32P4_BOARD_GUITION_M3)) {
+  if (!sd.begin(esp32csi_sd_config())) {
     Serial.println("SD FAILED - check card / format FAT32");
     while (true) delay(1000);
   }
@@ -67,7 +78,7 @@ void setup() {
 
   // --- Network (Ethernet) ---
   net.setHostname("csi-sd-archive");
-  if (!net.beginEthernet(WfmNetwork::guitionM3Eth())) {
+  if (!net.beginEthernet(esp32csi_wfm_eth())) {
     Serial.println("ETH.begin FAILED - check PHY pins / cable");
     while (true) delay(1000);
   }
@@ -87,5 +98,6 @@ void setup() {
 }
 
 void loop() {
+  dbg.poll();
   wfm.loop();  // serve explorer UI + APIs
 }

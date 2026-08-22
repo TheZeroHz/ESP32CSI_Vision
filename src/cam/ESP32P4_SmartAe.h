@@ -2,8 +2,9 @@
 
 /**
  * Phone-inspired software auto-exposure for ESP32-P4 CSI RGB565.
- * Disables crude on-sensor AEC/AGC and drives manual exposure then gain
- * from center-weighted luma metering + highlight penalty.
+ * Opt-in fallback when IPA AGC has no ISP stats (YUV/RGB sensors).
+ * Disables ISP AE and drives manual exposure then gain from center-weighted
+ * luma metering + highlight penalty.
  */
 
 #include <stdint.h>

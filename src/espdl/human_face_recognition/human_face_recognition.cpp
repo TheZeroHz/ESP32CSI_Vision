@@ -169,3 +169,4 @@ HumanFaceFeat *HumanFaceRecognizer::get_feat_model()
 {
     return &m_feat;
 }
+

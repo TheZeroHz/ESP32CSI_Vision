@@ -114,7 +114,7 @@ public:
     virtual void preload() {}
 
     /**
-     * @brief reset all state of module, include inputs， outputs and preload cache setting
+     * @brief reset all state of module, include inputsï¼Œ outputs and preload cache setting
      */
     virtual void reset() {}
 
@@ -150,3 +150,4 @@ void module_forward_dual_core(Module *op, void *args1, void *args2);
 
 } // namespace module
 } // namespace dl
+

@@ -292,3 +292,4 @@ struct RGB5652HSV<RGB565BE, RGBSwap, ExtraProcess> {
 
 } // namespace image
 } // namespace dl
+

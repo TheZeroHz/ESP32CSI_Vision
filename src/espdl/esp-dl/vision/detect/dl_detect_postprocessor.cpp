@@ -50,3 +50,4 @@ std::list<result_t> &DetectPostprocessor::get_result(int width, int height)
 }
 } // namespace detect
 } // namespace dl
+

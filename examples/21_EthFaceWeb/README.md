@@ -17,7 +17,7 @@ Detection / Recognition toggles, named enroll → SD `face.db` + `face_names.txt
 
 ## SD models
 
-`human_face_detect_msr/mnp_*.espdl` + `human_face_feat_mfn_s8_v1.espdl` under `/models/p4/`.
+`human_face_detect_msr/mnp_*.espdl` + `human_face_feat_mfn_s8_v1.espdl` (or `_mbf_`) under `/models/p4/`.
 
 ## Build
 

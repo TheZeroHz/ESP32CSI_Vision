@@ -121,3 +121,4 @@ std::vector<int> get_slice_shape(const std::vector<int> &shape,
 
 } // namespace base
 } // namespace dl
+

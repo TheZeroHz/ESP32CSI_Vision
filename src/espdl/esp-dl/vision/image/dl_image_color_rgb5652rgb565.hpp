@@ -64,3 +64,4 @@ struct RGB5652RGB565 {
 };
 } // namespace image
 } // namespace dl
+

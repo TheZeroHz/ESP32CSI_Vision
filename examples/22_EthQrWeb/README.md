@@ -13,7 +13,7 @@ Sources: [zxing-cpp](https://github.com/zxing-cpp/zxing-cpp) **v2.3.0** under `s
 
 ## Smart AE
 
-Enabled after `stream.begin()` via `stream.enableSmartAe(true)`.
+Enabled after `stream.begin()` only when IPA AGC has no ISP stats (`stream.enableSmartAe(!cam.ispReady())`). RAW CSI uses IPA AGC by default; the SENSOR tab can still force Smart AE.
 
 ## Format toggles + persistence
 

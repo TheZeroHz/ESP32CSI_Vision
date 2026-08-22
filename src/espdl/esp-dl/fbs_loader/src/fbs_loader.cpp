@@ -787,3 +787,4 @@ const char *FbsLoader::get_model_location_string()
 }
 
 } // namespace fbs
+

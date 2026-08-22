@@ -15,20 +15,21 @@
 
 #include <Arduino.h>
 
-#ifndef ETH_PHY_MDC
-#define ETH_PHY_TYPE  ETH_PHY_IP101
-#define ETH_PHY_ADDR  1
-#define ETH_PHY_MDC   31
-#define ETH_PHY_MDIO  52
-#define ETH_PHY_POWER 51
-#define ETH_CLK_MODE  EMAC_CLK_EXT_IN
+
+#include "board_config.h"
+#include <ETH.h>
+
+#ifndef APP_NAME
+#define APP_NAME "20_EthCvPreview"
+#endif
+#ifndef APP_DEBUG
+#define APP_DEBUG ESP32P4_DBG_LIVE
 #endif
 
-#include <ETH.h>
-#include <ESP32CSI_Vision.h>
 
 ESP32P4_Camera cam;
 ESP32P4_MjpegServer stream;
+ESP32P4_Debug dbg;
 
 static volatile bool eth_ready = false;
 
@@ -60,8 +61,9 @@ void setup() {
   Serial.begin(115200);
   delay(1200);
   Serial.println("=== 20_EthCvPreview (CV dashboard + Ethernet MJPEG) ===");
+  dbg.begin(APP_NAME, APP_DEBUG);
 
-  if (!cam.begin(ESP32P4_BOARD_GUITION_M3)) {
+  if (!cam.begin(esp32csi_cam_config())) {
     Serial.println("camera FAILED");
     while (true) delay(1000);
   }
@@ -93,7 +95,7 @@ void setup() {
   Serial.printf("UI      http://%s/   (CV: Edge track)\n", ip.toString().c_str());
   Serial.printf("stream  http://%s:%u/stream\n", ip.toString().c_str(),
                 (unsigned)stream.streamPort());
-  Serial.println("Mode=Edge track → cyan ID# boxes. Move objects to see IDs stick.");
+  Serial.println("Mode=Edge track -> cyan ID# boxes. Move objects to see IDs stick.");
 }
 
 void loop() {

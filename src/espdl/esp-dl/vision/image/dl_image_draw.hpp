@@ -11,3 +11,4 @@ void draw_hollow_rectangle(
 
 } // namespace image
 } // namespace dl
+

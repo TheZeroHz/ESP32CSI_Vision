@@ -27,6 +27,7 @@ static bool configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p4_cam_m
     m.in_fmt = ESP32P4_CAM_IN_RAW10;
     m.lane_mbps = 500;
     m.framesize_tag = ESP32P4_FRAMESIZE_1080P;
+    m.fps = 30;
     ok = ov5647_configure_1920x1080_raw10(addr7);
   }
   if (!ok) {
@@ -36,6 +37,7 @@ static bool configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p4_cam_m
     m.in_fmt = ESP32P4_CAM_IN_RAW8;
     m.lane_mbps = 200;
     m.framesize_tag = ESP32P4_FRAMESIZE_800X640;
+    m.fps = 50;
     ok = ov5647_configure_800x640_raw8(addr7);
   }
   if (ok && mode_out) *mode_out = m;

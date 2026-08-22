@@ -39,3 +39,4 @@ void lut_s16_nearest_neighbor(int16_t *output, const int16_t *input, int32_t siz
 
 } // namespace base
 } // namespace dl
+

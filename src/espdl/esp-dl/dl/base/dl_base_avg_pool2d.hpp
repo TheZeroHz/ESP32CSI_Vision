@@ -14,3 +14,4 @@ template <typename feature_t>
 void avg_pool2d(void *args_ptr);
 } // namespace base
 } // namespace dl
+

@@ -6,7 +6,7 @@ namespace cache {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
 #if CONFIG_IDF_TARGET_ESP32S3
-static uint8_t autoload_trigger = 2; // TODO: typedef enum 提高可读性
+static uint8_t autoload_trigger = 2; // TODO: typedef enum æé«˜å¯è¯»æ€§
 static uint8_t autoload_linesize = 0;
 static uint8_t autoload_enable = 1;
 static uint8_t preload_enable = 0;
@@ -171,3 +171,4 @@ void autoload_func(uint32_t addr1, uint32_t size1)
 } // namespace cache
 } // namespace tool
 } // namespace dl
+

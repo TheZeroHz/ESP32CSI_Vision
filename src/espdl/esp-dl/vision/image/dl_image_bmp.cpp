@@ -252,3 +252,4 @@ img_t read_bmp(const char *file_name)
 }
 } // namespace image
 } // namespace dl
+

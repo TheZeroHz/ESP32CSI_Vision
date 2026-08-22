@@ -1,29 +1,18 @@
 /**
- * 13_EthernetTest — onboard 100M Ethernet (IP101) on Guition JC-ESP32P4-M3
+ * 13_EthernetTest — onboard 100M Ethernet (edit PHY in board_config.h)
  *
  * Plug an Ethernet cable into a DHCP router/switch, open Serial @ 115200.
  * You should see Link Up → Got IP → periodic HTTP GET to example.com.
  *
- * Board pins (IP101GRI / RMII):
- *   MDC=31  MDIO=52  PHY power/reset=51  REF_CLK in=50  PHY addr=1
- *   RMII data pins are EMAC defaults (TXD0=34, TXD1=35, TX_EN=49,
- *   RXD0=30, RXD1=29, CRS_DV=28).
+ * PHY type / MDC / MDIO / power: board_config.h in this folder.
+ * ESP32-P4 RMII data pins are EMAC defaults (TXD0=34, TXD1=35, TX_EN=49,
+ * RXD0=30, RXD1=29, CRS_DV=28, REF_CLK=50).
  *
  * Arduino-ESP32 3.x + board: ESP32P4 Dev Module (PSRAM Enabled).
  */
 
 #include <Arduino.h>
-
-// Must be defined BEFORE including ETH.h so ETH.begin() uses these defaults.
-#ifndef ETH_PHY_MDC
-#define ETH_PHY_TYPE  ETH_PHY_IP101
-#define ETH_PHY_ADDR  1
-#define ETH_PHY_MDC   31
-#define ETH_PHY_MDIO  52
-#define ETH_PHY_POWER 51
-#define ETH_CLK_MODE  EMAC_CLK_EXT_IN
-#endif
-
+#include "board_config.h"
 #include <ETH.h>
 #include <NetworkClient.h>
 
@@ -34,7 +23,7 @@ void onEthEvent(arduino_event_id_t event) {
   switch (event) {
     case ARDUINO_EVENT_ETH_START:
       Serial.println("ETH Started");
-      ETH.setHostname("guition-p4-m3");
+      ETH.setHostname(CFG_ETH_HOSTNAME);
       break;
     case ARDUINO_EVENT_ETH_CONNECTED:
       Serial.println("ETH Link Up");
@@ -98,7 +87,7 @@ void setup() {
   // Explicit begin — same pins as the #defines above.
   if (!ETH.begin(ETH_PHY_TYPE, ETH_PHY_ADDR, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_POWER,
                  ETH_CLK_MODE)) {
-    Serial.println("ETH.begin FAILED — check PHY power/cable/pins");
+    Serial.println("ETH.begin FAILED - check PHY power/cable/pins");
     while (true) delay(1000);
   }
 }

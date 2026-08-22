@@ -1,64 +1,53 @@
-#include <WiFi.h>
-#include <ESP32CSI_Vision.h>
+/**
+ * 04_WiFiMjpeg — Camera UI over ESP32-C6 Wi-Fi.
+ *
+ * Camera + C6 SDIO + SSID: board_config.h
+ * (docs/Custom-Boards.md). Not Guition-specific.
+ *
+ * Sketch-owned FB + tiny preview + model JSON: 43_CamWebModels.
+ */
 
-// Edit Wi‑Fi credentials:
-static const char *WIFI_SSID = "Rakib";
-static const char *WIFI_PASS = "rakib@2025";
+#ifndef APP_NAME
+#define APP_NAME "04_WiFiMjpeg"
+#endif
+#ifndef APP_DEBUG
+#define APP_DEBUG ESP32P4_DBG_LIVE
+#endif
 
-// Guition JC-ESP32P4-M3 C6 SDIO pins:
-static const int C6_SDIO_CLK = 18;
-static const int C6_SDIO_CMD = 19;
-static const int C6_SDIO_D0 = 14;
-static const int C6_SDIO_D1 = 15;
-static const int C6_SDIO_D2 = 16;
-static const int C6_SDIO_D3 = 17;
-static const int C6_SDIO_RST = 54;
+#include "board_config.h"
 
 ESP32P4_Camera cam;
 ESP32P4_MjpegServer stream;
+
+ESP32P4_Debug dbg;
 
 void setup() {
   Serial.begin(115200);
   delay(1200);
   Serial.println("=== 04_WiFiMjpeg ===");
+  dbg.begin(APP_NAME, APP_DEBUG);
 
-  if (!cam.begin(ESP32P4_BOARD_GUITION_M3)) {
-    Serial.println("camera FAILED");
+  esp32p4_cam_config_t cam_cfg = esp32csi_cam_config();
+  esp32csi_print_cam_config(cam_cfg);
+  if (!cam.begin(cam_cfg)) {
+    Serial.println("camera FAILED — ESP32CSI_CAM_*");
     while (true) delay(1000);
   }
 
-  WiFi.setPins(C6_SDIO_CLK, C6_SDIO_CMD, C6_SDIO_D0, C6_SDIO_D1, C6_SDIO_D2, C6_SDIO_D3,
-               C6_SDIO_RST);
-  WiFi.mode(WIFI_STA);
-  WiFi.setSleep(false);
-  WiFi.setHostname("esp32p4-cam");
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  uint32_t t0 = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - t0 < 30000) {
-    delay(400);
-    Serial.print('.');
-  }
-  Serial.println();
-  if (WiFi.status() != WL_CONNECTED) {
-    WiFi.mode(WIFI_AP);
-    WiFi.softAP("ESP32-P4-Cam", "camstream1");
-    Serial.print("SoftAP ");
-    Serial.println(WiFi.softAPIP());
-  } else {
-    Serial.print("WiFi ");
-    Serial.println(WiFi.localIP());
+  esp32csi_wifi_config_t wifi_cfg = esp32csi_wifi_config();
+  esp32csi_print_wifi_config(wifi_cfg);
+  if (!esp32csi_wifi_begin(wifi_cfg)) {
+    Serial.println("Wi-Fi FAILED — ESP32CSI_WIFI_* / C6 SDIO pins");
+    while (true) delay(1000);
   }
 
-  // quality 35 = faster stream; raise toward 50–60 for sharper /jpg
   if (!stream.begin(&cam, 80, 35)) {
     Serial.println("mjpeg server FAILED");
     while (true) delay(1000);
   }
-  IPAddress ip = (WiFi.status() == WL_CONNECTED) ? WiFi.localIP() : WiFi.softAPIP();
-  Serial.printf("UI      http://%s/   (settings — always responsive)\n", ip.toString().c_str());
+  IPAddress ip = esp32csi_wifi_ip();
+  Serial.printf("UI      http://%s/\n", ip.toString().c_str());
   Serial.printf("stream  http://%s:%u/stream\n", ip.toString().c_str(),
-                (unsigned)stream.streamPort());
-  Serial.printf("python  cam_wifi_viewer.py %s %u\n", ip.toString().c_str(),
                 (unsigned)stream.streamPort());
 }
 

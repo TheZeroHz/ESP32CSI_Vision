@@ -14,6 +14,12 @@
 
 #include "cam/ESP32P4_Camera.h"
 
+enum esp32p4_face_det_model_t : int {
+  ESP32P4_FACE_MSRMNP_S8_V1 = 0,
+  ESP32P4_FACE_ESPDET_PICO_224 = 1,
+  ESP32P4_FACE_ESPDET_PICO_416 = 2,
+};
+
 struct esp32p4_face_t {
   float score;
   int x;
@@ -27,9 +33,9 @@ struct esp32p4_face_t {
 class ESP32P4_FaceDetect {
  public:
   enum Model : int {
-    MSRMNP_S8_V1 = 0,
-    ESPDET_PICO_224 = 1,
-    ESPDET_PICO_416 = 2,
+    MSRMNP_S8_V1 = ESP32P4_FACE_MSRMNP_S8_V1,
+    ESPDET_PICO_224 = ESP32P4_FACE_ESPDET_PICO_224,
+    ESPDET_PICO_416 = ESP32P4_FACE_ESPDET_PICO_416,
   };
 
   ESP32P4_FaceDetect() = default;

@@ -5,6 +5,7 @@
  */
 #include <Arduino.h>
 #include <FS.h>
+#include <string.h>
 #include <esp_heap_caps.h>
 
 namespace wfm {
@@ -13,6 +14,38 @@ inline bool pathOk(const String &p) {
   if (!p.length() || p[0] != '/') return false;
   if (p.indexOf("..") >= 0) return false;
   if (p.length() > 200) return false;
+  return true;
+}
+
+/** H.264 Annex-B temp beside the final .mp4; not a user file. */
+inline bool isRecWorkName(const char *name) {
+  if (!name || !name[0]) return false;
+  const char *base = strrchr(name, '/');
+  base = base ? base + 1 : name;
+  size_t n = strlen(base);
+  if (n < 9) return false;
+  const char *ext = base + (n - 9);
+  for (int i = 0; i < 9; i++) {
+    char a = ext[i], b = ".rec_work"[i];
+    if (a >= 'A' && a <= 'Z') a = (char)(a - 'A' + 'a');
+    if (a != b) return false;
+  }
+  return true;
+}
+
+/** Incomplete mux destination; not a user file. */
+inline bool isMuxTempName(const char *name) {
+  if (!name || !name[0]) return false;
+  const char *base = strrchr(name, '/');
+  base = base ? base + 1 : name;
+  size_t n = strlen(base);
+  if (n < 8) return false;
+  const char *ext = base + (n - 8);
+  for (int i = 0; i < 8; i++) {
+    char a = ext[i], b = ".mp4.tmp"[i];
+    if (a >= 'A' && a <= 'Z') a = (char)(a - 'A' + 'a');
+    if (a != b) return false;
+  }
   return true;
 }
 

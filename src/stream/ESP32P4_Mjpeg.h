@@ -44,7 +44,21 @@ class ESP32P4_MjpegServer {
   void end();
 
   uint32_t sent() const { return _sent; }
+  uint32_t dropped() const { return _dropped; }
   uint32_t lastJpegBytes() const { return _last_jpeg; }
+  uint32_t encodeMs() const { return _encode_ms; }
+  /** 0=idle 1=capture 2=scale 3=jpeg 4=wait-slot */
+  uint8_t workerPhase() const { return _work_phase; }
+  uint32_t captureFails() const { return _cap_fail; }
+  uint32_t jpegFails() const { return _jpeg_fail; }
+  uint32_t lastFrameAgeMs() const {
+    uint32_t t = _last_fb_ms;
+    return t ? (millis() - t) : 0;
+  }
+  uint8_t jpgBusyMask() const {
+    return (uint8_t)((_jpg_busy[0] ? 1u : 0u) | (_jpg_busy[1] ? 2u : 0u));
+  }
+  uint32_t ppaTimeouts() const { return _ppa.timeoutCount(); }
   uint8_t quality() const { return _quality; }
   uint8_t frameSkip() const { return _frame_skip; }
   uint8_t framesize() const { return _framesize; }
@@ -52,6 +66,7 @@ class ESP32P4_MjpegServer {
   uint16_t outHeight() const { return _out_h; }
   uint16_t controlPort() const { return _port; }
   uint16_t streamPort() const { return _stream_port; }
+  uint16_t audioStreamPort() const { return _audio_port; }
 
   void setQuality(uint8_t q);
   void setFrameSkip(uint8_t skip);
@@ -81,11 +96,12 @@ class ESP32P4_MjpegServer {
     return _rec_fs != nullptr && _h264 != nullptr && _h264->ready();
   }
   bool isRecording() const { return _recording; }
+  bool isFinalizing() const { return _rec_finalizing; }
   uint32_t videosSaved() const { return _videos; }
   const char *lastVideoPath() const { return _last_video; }
   const char *videoFolder() const { return _video_folder; }
 
-  /** Optional ES8311 mic: live waveform + PCM fused into MP4 on Record/Stop. */
+  /** Optional ES8311 mic: live waveform + AAC-LC fused into MP4 on Record/Stop. */
   bool enableMic(ESP32P4_Mic *mic);
   void disableMic();
   bool micEnabled() const { return _mic != nullptr && _mic->ready(); }
@@ -96,6 +112,7 @@ class ESP32P4_MjpegServer {
    */
   void setFilesBrowserPort(uint16_t port);
   uint16_t filesBrowserPort() const { return _files_port; }
+  void setAudioStreamPort(uint16_t port) { _audio_port = port; }
 
   /**
    * Optional RGB565 overlay hook (OpenCV-style annotate) before JPEG encode.
@@ -105,6 +122,8 @@ class ESP32P4_MjpegServer {
   using FrameHook = void (*)(uint16_t *rgb565, int w, int h, void *user);
   void setFrameHook(FrameHook hook, void *user = nullptr);
   void clearFrameHook() { setFrameHook(nullptr, nullptr); }
+  /** Pause JPEG worker (e.g. while loading a large ESP-DL model). HTTP UI stays up. */
+  void setEncodePaused(bool pause) { _enc_paused = pause; }
 
   /**
    * Built-in OpenCV-style dashboard in the web UI (modes, HSV presets, morph, edges…).
@@ -179,6 +198,44 @@ class ESP32P4_MjpegServer {
   QrUi &qrUi() { return _qr; }
   const QrUi &qrUi() const { return _qr; }
 
+  /**
+   * Object-detect / ESP-DL web panel.
+   * Sketch runs inference in setFrameHook and publishes via detUi().
+   * Optional catalog: setDetCatalog() to rename the tab and limit the model list.
+   */
+  struct DetUi {
+    bool on = false;
+    bool detect_en = false;
+    int model = 0;   // ESP32P4_ObjectDetect::Model, or sketch-defined
+    int objs = 0;
+    int ms = 0;
+    int thr_pct = 25;  // score threshold percent (5–95)
+    char summary[192] = {};
+    char tab[16] = "Detect";
+    char title[40] = "Object detect";
+    char hint[96] = "COCO / YOLO26 / cat / dog / hand / pedestrian · /models/p4/";
+    const char *opt_label[10] = {};
+    int opt_value[10] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+    int opt_n = 0;  // 0 = built-in 0..9 list
+    volatile bool model_req = false;
+    volatile bool thr_req = false;
+    volatile bool settings_dirty = false;
+  };
+  bool enableDetUi(bool on = true);
+  bool detUiEnabled() const { return _det.on; }
+  DetUi &detUi() { return _det; }
+  const DetUi &detUi() const { return _det; }
+  void setDetCatalog(const char *tab, const char *title, const char *hint, int n, const int *values,
+                     const char *const *labels);
+
+  /**
+   * One-shot toast (not a sticky overlay) when Detect is turned on and models
+   * are missing. Empty / nullptr clears it.
+   */
+  void setPreviewNote(const char *msg);
+  const char *previewNote() const { return _preview_note; }
+  void setModelMissingNote(const char *volumes, const char *what = "Model");
+
   /** Phone-like software AE (center-weighted luma → exposure then gain). */
   bool enableSmartAe(bool on = true);
   bool smartAeEnabled() const { return _smart_ae.enabled(); }
@@ -198,6 +255,8 @@ class ESP32P4_MjpegServer {
   void handleRecordStart();
   void handleRecordStop();
   void handleAudio();
+  void handleAudioStream(bool wav_header);
+  void handleDebug();
 
   bool startWorker();
   void stopWorker();
@@ -206,10 +265,12 @@ class ESP32P4_MjpegServer {
   static void workerThunk(void *arg);
   static void controlHttpThunk(void *arg);
   static void streamHttpThunk(void *arg);
+  static void audioHttpThunk(void *arg);
   static void micThunk(void *arg);
   void workerLoop();
   void controlHttpLoop();
   void streamHttpLoop();
+  void audioHttpLoop();
   void micLoop();
   bool startMicTask();
   void stopMicTask();
@@ -227,6 +288,7 @@ class ESP32P4_MjpegServer {
   ESP32P4_Camera *_cam = nullptr;
   WebServer *_http = nullptr;         // UI + control + /jpg (never blocks)
   WebServer *_stream_http = nullptr;  // /stream only (may block)
+  WebServer *_audio_http = nullptr;   // /audio.pcm + /audio.wav (may block)
   ESP32P4_Jpeg _jpeg;
   ESP32P4_Ppa _ppa;
   fs::FS *_store = nullptr;
@@ -234,6 +296,7 @@ class ESP32P4_MjpegServer {
   ESP32P4_H264 *_h264 = nullptr;
   ESP32P4_Mic *_mic = nullptr;
   uint8_t *_jpg_buf[2] = {nullptr, nullptr};
+  uint8_t *_tx_buf = nullptr;
   uint8_t *_scale_buf = nullptr;
   uint8_t *_save_buf = nullptr;
   uint8_t *_rec_scale_buf = nullptr;
@@ -248,12 +311,15 @@ class ESP32P4_MjpegServer {
   volatile uint32_t _frame_seq = 0;
   volatile bool _size_dirty = false;  // clear buffers after framesize change
   volatile bool _worker_run = false;
+  volatile bool _enc_paused = false;
   volatile bool _http_run = false;
   volatile bool _recording = false;
   volatile bool _rec_finalizing = false;
+  volatile int8_t _rec_save_ok = 0;  // 0 idle, 1 saved, -1 failed
   TaskHandle_t _worker = nullptr;
   TaskHandle_t _control_task = nullptr;
   TaskHandle_t _stream_task = nullptr;
+  TaskHandle_t _audio_task = nullptr;
   TaskHandle_t _mic_task = nullptr;
   TaskHandle_t _rec_finalize_task = nullptr;
   volatile bool _mic_task_run = false;
@@ -267,12 +333,14 @@ class ESP32P4_MjpegServer {
   esp32p4_cv_dash_cfg_t _cv{};
   FaceUi _face{};
   QrUi _qr{};
+  DetUi _det{};
   ESP32P4_SmartAe _smart_ae{};
 
   static void cvDashHook(uint16_t *rgb, int w, int h, void *user);
 
   uint16_t _port = 80;
   uint16_t _stream_port = 81;
+  uint16_t _audio_port = 84;
   uint16_t _files_port = 0;
   uint8_t _quality = 35;
   uint8_t _frame_skip = 0;
@@ -283,6 +351,10 @@ class ESP32P4_MjpegServer {
   uint32_t _last_jpeg = 0;
   uint32_t _dropped = 0;
   uint32_t _encode_ms = 0;
+  volatile uint8_t _work_phase = 0;
+  volatile uint32_t _cap_fail = 0;
+  volatile uint32_t _jpeg_fail = 0;
+  volatile uint32_t _last_fb_ms = 0;
   uint32_t _saved = 0;
   uint32_t _save_index = 0;
   uint32_t _videos = 0;
@@ -291,4 +363,5 @@ class ESP32P4_MjpegServer {
   char _video_folder[32] = "/VIDEO";
   char _last_saved[64] = "";
   char _last_video[64] = "";
+  char _preview_note[160] = "";
 };

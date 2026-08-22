@@ -77,3 +77,4 @@ private:
 
     model_type_t m_model_type;
 };
+

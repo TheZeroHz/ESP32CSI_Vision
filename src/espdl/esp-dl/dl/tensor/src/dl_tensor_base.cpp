@@ -1100,7 +1100,7 @@ void _slice(TensorBase *input,
         assert(loop_start[axis] < loop_end[axis]);
     }
     // contiguous_block_size: tail after last_axis (step always 1, safe for copy_memory).
-    // min_offset: includes last_axis range — only valid for copy_memory when step==1.
+    // min_offset: includes last_axis range â€” only valid for copy_memory when step==1.
     int contiguous_block_size = 1;
     for (int i = last_axis + 1; i < dims; i++) {
         contiguous_block_size *= input_shape[i];
@@ -1376,3 +1376,4 @@ void TensorBase::rand()
 }
 
 } // namespace dl
+

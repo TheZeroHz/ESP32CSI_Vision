@@ -28,3 +28,4 @@ void elemwise_pow(elemwiseArgsType<float> *args);
 
 } // namespace base
 } // namespace dl
+

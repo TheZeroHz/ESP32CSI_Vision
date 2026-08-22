@@ -47,3 +47,4 @@ template void mat_vec_dotprod(int16_t *matrix, int16_t *vector, int16_t *result,
 template void mat_vec_dotprod(float *matrix, float *vector, float *result, int rows, int cols, int shift);
 } // namespace base
 } // namespace dl
+

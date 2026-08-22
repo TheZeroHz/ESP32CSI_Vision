@@ -221,3 +221,4 @@ void HumanFaceDetect::load_model()
     }
     }
 }
+

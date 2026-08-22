@@ -1,41 +1,106 @@
 # Examples Map
 
-All Arduino sketches: **File → Examples → ESP32CSI_Vision → …**
+Arduino: **File → Examples → ESP32CSI_Vision → …**  
+Each folder has its own `board_config.h`. Pins are not in `src/`.
 
-| # | Sketch | APIs used | What you learn |
-| --- | --- | --- | --- |
-| 01 | `01_CamTest` | `ESP32P4_Camera`, PSRAM free | Capture loop, release FB |
-| 02 | `02_JpegSnapshot` | `Camera` + `Jpeg` + `psram_alloc` | HW JPEG encode |
-| 03 | `03_JpegDecode` | `Jpeg::decodeInfo` / `decode` | Decode without camera |
-| 04 | `04_WiFiMjpeg` | `MjpegServer`, WiFi pins | Full UI + dual-port stream |
-| 05 | `05_MotionDetect` | `Dsp::detect` | Motion ROI |
-| 06 | `06_PpaScale` | `Ppa::scale`, `Img::downsample2x565` | HW scale + CPU fallback |
-| 07 | `07_WhoPipeline` | `WhoPipeline` | Callback + `waitFrame` |
-| 08 | `idf_examples/08_FaceDetect` | `FaceDetect` | ESP-DL faces (**ESP-IDF**) |
-| 21 | `idf_examples/21_EthFaceWeb` | `FaceAi` + MJPEG | Ethernet web UI + detect/recognize (**ESP-IDF**) |
-| 09 | `09_SdCard` | `ESP32P4_Sd` | microSD R/W |
-| 14 | `14_EthSdBrowser` | Bundled WebFileManager + Sd | Ethernet file explorer |
-| 15 | `15_MicSdRecord` | ES8311 + I2S + Sd | Mic → WAV on SD (Guition M3) |
-| 16 | `16_MicSdWebFileManager` | Mic + bundled WebFileManager | GPIO1 (or Serial `r`) records 10s into `/Recording` + web UI |
-| 17 | `17_EthH264Record` | `MjpegServer`, ETH/IP101, H264, Mic, Sd | Ethernet MJPEG + Capture Img + H.264/MP4 + mic |
-| 18 | `18_EthH264RecordFiles` | 17 + bundled WebFileManager | Camera UI ↔ SD file browser (ports 80 ↔ 82) |
-| 19 | `19_CvColorBlobs` | `ESP32P4_Cv`, `ESP32P4_VisionAi` | HSV color blobs + letterbox tensor for AI |
-| 20 | `20_EthCvPreview` | Eth + `MjpegServer` + `ESP32P4_Cv` | Live Ethernet preview with CV blob overlays |
+Guide: [Custom-Boards.md](../Custom-Boards.md) → flash **`00_BoardConfig`** → read Serial `CFG:`.
+
+ESP-IDF extras: `idf_examples/08_FaceDetect`, `09_CocoDetect`, `21_EthFaceWeb`.
 
 ---
 
-## 01 — CamTest
+## Learning path
+
+| Step | Sketch | You learn |
+| --- | --- | --- |
+| 0 | `00_BoardConfig` | Dump cam / SD / mic / Wi-Fi / ETH GPIOs |
+| 1 | `01_CamTest` | `capture` / `release` |
+| 2 | `02_JpegSnapshot` | HW JPEG encode |
+| 3 | `03_JpegDecode` | Decode without a camera |
+| 4 | `04_WiFiMjpeg` | C6 Wi-Fi + fat Camera UI (`:80` / `:81`) |
+| 5 | `05_MotionDetect` | Frame-diff ROI |
+| 6 | `06_PpaScale` | PPA scale + CPU `downsample2x565` |
+| 7 | `07_WhoPipeline` | Async capture queue |
+| 9 | `09_SdCard` | SDMMC via `esp32csi_sd_config()` |
+
+Then pick a track:
+
+| Track | Sketches |
+| --- | --- |
+| Other buses | `24_DvpCam` `25_SpiCam` `26_UsbHostUvc` `23_UsbUvc` `27_V4l2Ctl` `28_DualCam` |
+| Storage + AV | `10` `11` `12` `14`–`18` `29`–`31` `44` |
+| CV / QR | `19` `20` `22` |
+| Detect zoo (Eth MJPEG tabs) | `32`–`41` |
+| You own the FB | `42_DetectApi` (Serial JSON) `43_CamWebModels` (preview + `/dets`) |
+
+---
+
+## Catalog
+
+| # | Sketch | Objects | What it proves |
+| --- | --- | --- | --- |
+| 00 | `00_BoardConfig` | `esp32csi_print_board` | Wiring dump + optional cam probe |
+| 01 | `01_CamTest` | `Camera` `Debug` | Capture loop |
+| 02 | `02_JpegSnapshot` | `Camera` `Jpeg` | `jpeg.encode(fb, …)` |
+| 03 | `03_JpegDecode` | `Jpeg` | `decodeInfo` / `decode` — no CSI |
+| 04 | `04_WiFiMjpeg` | `Camera` `MjpegServer` | Full UI + dual-port stream |
+| 05 | `05_MotionDetect` | `Camera` `Dsp` | `dsp.detect(fb, &m)` |
+| 06 | `06_PpaScale` | `Camera` `Ppa` `Img` | HW scale + CPU fallback |
+| 07 | `07_WhoPipeline` | `Camera` `WhoPipeline` | `onFrame` / `waitFrame` |
+| 09 | `09_SdCard` | `Sd` | R/W on SDMMC |
+| 10 | `10_WiFiMjpegSdCapture` | MJPEG + Sd | UI snapshot → `/IMG` |
+| 11 | `11_H264SdRecord` | `H264` `Sd` | MP4 video-only (no stream) |
+| 12 | `12_WiFiH264Record` | Wi-Fi + H264 | Record from UI |
+| 13 | `13_EthernetTest` | ETH | Link + IP |
+| 14 | `14_EthSdBrowser` | ETH + WFM + Sd | File explorer |
+| 15 | `15_MicSdRecord` | `Mic` `Sd` | WAV (`CFG_MIC_*`) |
+| 16 | `16_MicSdWebFileManager` | Mic + WFM | GPIO / Serial `r` → `/Recording` |
+| 17 | `17_EthH264Record` | Eth MJPEG + H264 + Mic | Live + Capture Img + MP4 |
+| 18 | `18_EthH264RecordFiles` | 17 + WFM | UI `:80` ↔ files `:82` |
+| 19 | `19_CvColorBlobs` | `Cv` `VisionAi` | HSV blobs + letterbox |
+| 20 | `20_EthCvPreview` | Eth MJPEG + `stream.cvConfig()` | Blob overlay on the stream buffer |
+| 21 | `21_EthFaceWeb` | Eth MJPEG + `FaceAi` | Detect / enroll / recognize |
+| 22 | `22_EthQrWeb` | Eth MJPEG + `Qr` | QR / barcode overlay |
+| 23 | `23_UsbUvc` | `Uvc` | PC webcam gadget |
+| 24 | `24_DvpCam` | `Camera` DVP | OV2640 parallel RGB565 |
+| 25 | `25_SpiCam` | `Camera` SPI | SP0A39 GRAY8 |
+| 26 | `26_UsbHostUvc` | `Camera` UVC_HOST | USB webcam → `camera_fb_t` |
+| 27 | `27_V4l2Ctl` | `V4l2` | `/dev/video0` + Serial v4l2-ctl |
+| 28 | `28_DualCam` | two `Camera` | CSI + DVP/SPI/host UVC (not two CSI) |
+| 29 | `29_WiFiMjpegWaveshareNano` | Camera Sd Mic MJPEG H264 | Waveshare Nano pin set |
+| 30 | `30_EthLiveAvFiles` | ETH + live AV + WFM | `CFG_ETH_*` |
+| 31 | `31_WiFiLiveAvFiles` | C6 Wi-Fi + live AV + WFM | `CFG_WIFI_*` |
+| 32 | `32_EthCocoWeb` | `ObjectDetect` | COCO / YOLO26 / Pico zoo |
+| 33 | `33_EthYolo26Web` | YOLO26n | 640 / 512 |
+| 34–36 | Cat / Dog / Hand | Pico | Single-class |
+| 37 | `37_EthPoseWeb` | `Pose` | COCO-17 skeletons |
+| 38 | `38_EthSegWeb` | `Seg` | YOLO11n-Seg masks |
+| 39 | `39_EthGestureWeb` | `Gesture` | Hand + 8 classes |
+| 40 | `40_EthClsWeb` | `Cls` | ImageNet top-5 |
+| 41 | `41_EthOcrWeb` | `Ocr` | PaddleOCR v6 |
+| 42 | `42_DetectApi` | `ObjectDetect` | `infer` → Serial JSON (SD optional) |
+| 43 | `43_CamWebModels` | `WebPreview` + `ObjectDetect` | You `capture` → `infer` → `present` |
+| 44 | `44_AvSdRecord` | `Camera` `H264` `Mic` `Sd` | MP4 + AAC, **no stream** |
+
+---
+
+## Snippets (object style)
+
+### 01 — capture
 
 ```cpp
-#include <ESP32CSI_Vision.h>
+#include "board_config.h"
 ESP32P4_Camera cam;
+ESP32P4_Debug dbg;
 
 void setup() {
   Serial.begin(115200);
-  cam.begin(ESP32P4_BOARD_GUITION_M3);
+  dbg.begin("01_CamTest", ESP32P4_DBG_CAM);
+  cam.begin(esp32csi_cam_config());
 }
 
 void loop() {
+  dbg.poll();
   camera_fb_t *fb = cam.capture(2000);
   if (!fb) return;
   Serial.printf("%ux%u\n", fb->width, fb->height);
@@ -43,130 +108,90 @@ void loop() {
 }
 ```
 
-**Prefs:** board preset only.
-
----
-
-## 02 — JpegSnapshot
+### 02 — JPEG
 
 ```cpp
 ESP32P4_Jpeg jpeg;
+jpeg.begin(cam.width(), cam.height(), 45);
 uint8_t *jpg = (uint8_t *)esp32p4_psram_alloc(200 * 1024);
-jpeg.begin(cam.width(), cam.height(), 45);  // quality preference
 size_t n = jpeg.encode(fb, jpg, 200 * 1024);
 ```
 
-**Prefs:** JPEG `quality` in `begin` / `setQuality`.
+### 04 — Wi-Fi MJPEG
 
----
-
-## 03 — JpegDecode
-
-Smoke-tests decoder with embedded tiny JPEG — no CSI required.
-
-**Prefs:** `jpeg.begin(max_w, max_h, quality)`.
-
----
-
-## 04 — WiFiMjpeg
-
-**Prefs (edit sketch):**
-
-| Preference | Where |
-| --- | --- |
-| Wi‑Fi SSID/pass | `WIFI_SSID` / `WIFI_PASS` |
-| C6 SDIO pins | `WiFi.setPins(...)` |
-| JPEG quality | `stream.begin(&cam, 80, 35)` |
-| Live knobs | UI or `/control` — see [HTTP & Preferences](HTTP-and-Preferences.md) |
+SSID / C6 pins: `CFG_WIFI_*` in `board_config.h`. Live knobs: [HTTP](HTTP-and-Preferences.md).
 
 ```cpp
-stream.begin(&cam, 80, 35);
-// UI :80  stream :81
+esp32csi_wifi_begin();
+stream.begin(&cam, 80, 35);   // UI :80  stream :81
 ```
-
-Viewer:
 
 ```bash
 python examples/04_WiFiMjpeg/cam_wifi_viewer.py <ip> 81
 ```
 
----
-
-## 17 — EthMjpeg
-
-Same product path as **04**, but brings up Guition M3 **IP101 Ethernet** instead of C6 Wi‑Fi, plus SD **Capture Img** → `/IMG`.
-
-**Prefs (edit sketch):**
-
-| Preference | Where |
-| --- | --- |
-| ETH PHY pins | `ETH_PHY_*` / `ETH.begin(...)` |
-| JPEG quality | `stream.begin(&cam, 80, 35)` |
-| Live knobs | UI or `/control` — see [HTTP & Preferences](HTTP-and-Preferences.md) |
+### 05 — motion
 
 ```cpp
-ETH.begin(...);
-stream.begin(&cam, 80, 35);
-// UI :80  stream :81
-```
-
-Viewer (reuse Wi‑Fi script):
-
-```bash
-python examples/04_WiFiMjpeg/cam_wifi_viewer.py <ip> 81
-```
-
----
-
-## 05 — MotionDetect
-
-```cpp
-dsp.begin(cam.width(), cam.height(), 22);  // threshold preference
-esp32p4_motion_t m{};
+ESP32P4_Dsp dsp;
+dsp.begin(fb->width, fb->height, 25);
+esp32p4_motion_t m;
 dsp.detect(fb, &m);
 ```
 
-**Prefs:** `threshold` — lower = more sensitive.
-
----
-
-## 06 — PpaScale
+### 06 — PPA
 
 ```cpp
-ppa.scale(fb, scaled, cap, 400, 320);  // dst_w, dst_h preferences
+ESP32P4_Ppa ppa;
+ESP32P4_Img img;
+ppa.begin();
+if (!ppa.scale(fb, dst, cap, dw, dh))
+  img.downsample2x565((uint16_t *)fb->buf, fb->width, fb->height, (uint16_t *)dst);
 ```
 
-Fallback: `ESP32P4_Img::downsample2x565`.
+### 30 — Ethernet live AV
 
----
-
-## 07 — WhoPipeline
+PHY: `CFG_ETH_*`. Same UI as 04 plus Capture Img, Record MP4, Files, mic.
 
 ```cpp
-who.onFrame(on_frame);
-who.begin(&cam, 2);           // queue_len preference
-who.waitFrame(&fb, 2000);     // timeout preference
+esp32csi_eth_begin();
+stream.begin(&cam, 80, 35);
 ```
 
----
+### 42 / 43 — detect
 
-## 08 — FaceDetect (IDF)
+Copy `models/espdl/p4/*.espdl` to `/models/p4/` on SD or FFat.
 
 ```cpp
-face.begin(ESP32P4_FaceDetect::MSRMNP_S8_V1);  // model preference
-int n = face.detect(fb, faces, 8);             // max_out preference
+ESP32P4_ObjectDetect det;
+det.begin(ESP32P4_DET_DOG_224);
+int n = det.infer(fb);
+det.resultsJson(json, sizeof(json));
+det.draw((uint16_t *)fb->buf, fb->width, fb->height, det.results(), n, det.model());
+preview.present(fb);
+cam.release(fb);
 ```
 
-Not buildable in Arduino IDE alone.
+### 44 — video + mic, no stream
+
+```cpp
+mic.begin(esp32csi_mic_config());
+mic.startPcmRam();
+h264.openMp4(&store.fs(), "/VIDEO/VID_00001.mp4");
+// capture → ppa.scale → encodeToFile; call mic.poll() often
+mic.stopPcmFile();
+h264.setPcmRam(mic.pcmRam(), mic.pcmRamBytes(), (uint32_t)mic.sampleRate());
+h264.closeFile();   // remux MP4 + AAC
+```
 
 ---
 
-## Suggested learning order
+## Board config (all examples)
 
-1. `01` → confirm CSI + PSRAM  
-2. `02` → JPEG  
-3. `04` → Wi‑Fi UI (main product path)  
-4. `05` / `06` / `07` → DSP, PPA, pipeline  
-5. `08` → faces on ESP-IDF  
+1. Edit **`board_config.h`** in **that** example folder.
+2. Flash **`00_BoardConfig`** and read `CFG:`.
+3. Run `01` / `04` / `09` / `15` / `30` / `43` / `44` as needed.
 
-← [Home](Home.md) · [API Reference](API-Reference.md) →
+Copies are independent. Duplicate the file if you want the same pins everywhere.
+
+← [API Reference](API-Reference.md) · [Home](Home.md) →

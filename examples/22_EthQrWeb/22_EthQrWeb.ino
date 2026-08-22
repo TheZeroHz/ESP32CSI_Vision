@@ -12,14 +12,6 @@
 
 #include <Arduino.h>
 
-#ifndef ETH_PHY_MDC
-#define ETH_PHY_TYPE  ETH_PHY_IP101
-#define ETH_PHY_ADDR  1
-#define ETH_PHY_MDC   31
-#define ETH_PHY_MDIO  52
-#define ETH_PHY_POWER 51
-#define ETH_CLK_MODE  EMAC_CLK_EXT_IN
-#endif
 
 #ifndef QR_DECODE_INTERVAL_MS
 #define QR_DECODE_INTERVAL_MS 700
@@ -29,15 +21,24 @@
 #define APP_STORAGE ESP32P4_STORAGE_AUTO
 #endif
 
-#include <ETH.h>
 #include <Preferences.h>
-#include <ESP32CSI_Vision.h>
+#include "board_config.h"
+#include <ETH.h>
+
+#ifndef APP_NAME
+#define APP_NAME "22_EthQrWeb"
+#endif
+#ifndef APP_DEBUG
+#define APP_DEBUG ESP32P4_DBG_LIVE
+#endif
+
 
 ESP32P4_Camera cam;
 ESP32P4_MjpegServer stream;
 ESP32P4_Qr qr;
 ESP32P4_Sd sd;
 ESP32P4_StoragePref store;
+ESP32P4_Ppa ppa;
 Preferences qrPrefs;
 
 static volatile bool eth_ready = false;
@@ -60,21 +61,21 @@ static const char *kSettingsFs = "/qr/settings.txt";
 
 static void applyFormatsToDecoder() {
   auto &ui = stream.qrUi();
-  uint32_t m = ui.formats ? ui.formats : ESP32P4_Qr::defaultFormats();
+  uint32_t m = ui.formats ? ui.formats : qr.defaultFormats();
   qr.setFormats(m);
 }
 
 static void saveSettingsNvs() {
   auto &ui = stream.qrUi();
   if (!qrPrefs.begin("p4qr", false)) return;
-  qrPrefs.putUInt("fmts", ui.formats ? ui.formats : ESP32P4_Qr::defaultFormats());
+  qrPrefs.putUInt("fmts", ui.formats ? ui.formats : qr.defaultFormats());
   qrPrefs.putBool("scan", ui.scan_en);
   qrPrefs.end();
 }
 
 static void saveSettings() {
   auto &ui = stream.qrUi();
-  uint32_t fmts = ui.formats ? ui.formats : ESP32P4_Qr::defaultFormats();
+  uint32_t fmts = ui.formats ? ui.formats : qr.defaultFormats();
   char buf[96];
   snprintf(buf, sizeof(buf), "scan=%d\nformats=%u\n", ui.scan_en ? 1 : 0, (unsigned)fmts);
 
@@ -97,7 +98,7 @@ static void saveSettings() {
 
 static void loadSettings() {
   auto &ui = stream.qrUi();
-  ui.formats = ESP32P4_Qr::defaultFormats();
+  ui.formats = qr.defaultFormats();
   ui.scan_en = true;
 
   bool loaded = false;
@@ -116,7 +117,7 @@ static void loadSettings() {
         if (key == "scan") ui.scan_en = val.toInt() != 0;
         else if (key == "formats") {
           uint32_t m = (uint32_t)val.toInt();
-          m &= ESP32P4_Qr::defaultFormats();
+          m &= qr.defaultFormats();
           if (m) ui.formats = m;
         }
       }
@@ -128,9 +129,9 @@ static void loadSettings() {
   }
 
   if (!loaded && qrPrefs.begin("p4qr", true)) {
-    ui.formats = qrPrefs.getUInt("fmts", ESP32P4_Qr::defaultFormats());
-    ui.formats &= ESP32P4_Qr::defaultFormats();
-    if (!ui.formats) ui.formats = ESP32P4_Qr::defaultFormats();
+    ui.formats = qrPrefs.getUInt("fmts", qr.defaultFormats());
+    ui.formats &= qr.defaultFormats();
+    if (!ui.formats) ui.formats = qr.defaultFormats();
     ui.scan_en = qrPrefs.getBool("scan", true);
     qrPrefs.end();
     Serial.printf("QR settings: loaded NVS scan=%d fmts=%u\n", ui.scan_en ? 1 : 0,
@@ -167,13 +168,13 @@ static void qrTask(void * /*arg*/) {
       memcpy(g_codes, local, sizeof(esp32p4_qr_code_t) * (size_t)n);
       strncpy(ui.payload, local[0].payload, sizeof(ui.payload) - 1);
       ui.payload[sizeof(ui.payload) - 1] = '\0';
-      strncpy(ui.format_name, ESP32P4_Qr::formatName(local[0].format), sizeof(ui.format_name) - 1);
+      strncpy(ui.format_name, qr.formatName(local[0].format), sizeof(ui.format_name) - 1);
       ui.format_name[sizeof(ui.format_name) - 1] = '\0';
     }
     portEXIT_CRITICAL(&g_qr_mux);
 
     if (n > 0) {
-      Serial.printf("BC[%d] %s: %s (%dms)\n", n, ESP32P4_Qr::formatName(local[0].format),
+      Serial.printf("BC[%d] %s: %s (%dms)\n", n, qr.formatName(local[0].format),
                     local[0].payload, ms);
     } else {
       Serial.printf("BC: none (%dms %dx%d gray)\n", ms, w, h);
@@ -209,11 +210,11 @@ static void onQrFrame(uint16_t *rgb, int w, int h, void * /*user*/) {
   esp32p4_qr_code_t local[ESP32P4_QR_MAX_CODES];
   if (n > 0) memcpy(local, g_codes, sizeof(esp32p4_qr_code_t) * (size_t)n);
   portEXIT_CRITICAL(&g_qr_mux);
-  if (n > 0) ESP32P4_Qr::draw(rgb, w, h, local, n);
+  if (n > 0) qr.draw(rgb, w, h, local, n);
 
   const uint32_t now = millis();
   if (g_qr_busy && (now - g_last_kick_ms) > 5000) {
-    Serial.println("BC: decode watchdog — reset busy");
+    Serial.println("BC: decode watchdog - reset busy");
     g_qr_busy = false;
   }
   if (g_qr_busy || !g_qr_job) return;
@@ -226,7 +227,7 @@ static void onQrFrame(uint16_t *rgb, int w, int h, void * /*user*/) {
     dh = h;
   }
   if (!ensureGraySnap(dw, dh)) return;
-  if (!ESP32P4_Ppa::cv().rgb565ToGrayScale(rgb, w, h, g_gray, dw, dh)) return;
+  if (!ppa.rgb565ToGrayScale(rgb, w, h, g_gray, dw, dh)) return;
 
   g_gray_w = dw;
   g_gray_h = dh;
@@ -257,21 +258,24 @@ void onEthEvent(arduino_event_id_t event) {
   }
 }
 
+ESP32P4_Debug dbg;
+
 void setup() {
   Serial.begin(115200);
   delay(1200);
   Serial.println("=== 22_EthQrWeb (QR + Ethernet MJPEG) ===");
+  dbg.begin(APP_NAME, APP_DEBUG);
 
-  if (!cam.begin(ESP32P4_BOARD_GUITION_M3)) {
+  if (!cam.begin(esp32csi_cam_config())) {
     Serial.println("camera FAILED");
     while (true) delay(1000);
   }
 
-  store_ok = store.begin(APP_STORAGE, false, &sd, ESP32P4_BOARD_GUITION_M3);
+  store_ok = store.begin(APP_STORAGE, false, &sd, (esp32p4_board_t)ESP32CSI_BOARD);
   if (store_ok) {
     Serial.printf("Storage: %s\n", store.label());
   } else {
-    Serial.println("Storage mount FAILED — using NVS only for QR settings");
+    Serial.println("Storage mount FAILED - using NVS only for QR settings");
   }
 
   Network.onEvent(onEthEvent);
@@ -293,7 +297,7 @@ void setup() {
     Serial.println("QR (zxing-cpp + PPA) begin FAILED (PSRAM?)");
     while (true) delay(1000);
   }
-  (void)ESP32P4_Ppa::cv().begin();
+  (void)ppa.begin();
 
   g_qr_job = xSemaphoreCreateBinary();
   if (!g_qr_job ||
@@ -306,14 +310,14 @@ void setup() {
     Serial.println("mjpeg server FAILED");
     while (true) delay(1000);
   }
-  stream.enableSmartAe(true);
+  stream.enableSmartAe(!cam.ispReady());
   stream.setFramesize(ESP32P4_STREAM_HD);
   stream.enableQrUi(true);
   loadSettings();
   stream.setFrameHook(onQrFrame, nullptr);
 
   IPAddress ip = ETH.localIP();
-  Serial.printf("UI      http://%s/   (QR formats + Smart AE)\n", ip.toString().c_str());
+  Serial.printf("UI      http://%s/   (QR formats + IPA AGC / Smart AE fallback)\n", ip.toString().c_str());
   Serial.printf("stream  http://%s:%u/stream\n", ip.toString().c_str(),
                 (unsigned)stream.streamPort());
 }

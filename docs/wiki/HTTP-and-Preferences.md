@@ -1,6 +1,12 @@
 # HTTP API & Preferences
 
-Live controls for `ESP32P4_MjpegServer` (example `04_WiFiMjpeg`).
+Live controls for **`ESP32P4_MjpegServer`** (examples `04_WiFiMjpeg`, `30_EthLiveAvFiles`, detect web sketches `32`–`41`).
+
+SSID / C6 pins / Ethernet PHY live in the sketch’s `board_config.h` (`esp32csi_wifi_begin()` / `esp32csi_eth_begin()`), not in this page.
+
+Sketch-owned preview (`ESP32P4_WebPreview`, example `43`) is a smaller HTTP surface — see [WebPreview](#webpreview-example-43) at the bottom.
+
+Class methods: [API Reference — MJPEG](API-Reference.md#esp32p4_mjpegserver).
 
 ## Ports (important)
 
@@ -57,7 +63,7 @@ Example payload:
 ```json
 {
   "sensor": "OV5647 (OV CSI)",
-  "framesize": 0,
+  "framesize": 3,
   "out_w": 800,
   "out_h": 640,
   "w": 800,
@@ -86,7 +92,7 @@ Example payload:
 
 | Field | Meaning |
 | --- | --- |
-| `framesize` | Stream enum 0–4 (PPA output) |
+| `framesize` | Stream enum 0–9 (PPA output) |
 | `out_w` / `out_h` | Encoded stream size |
 | `native_w` / `native_h` | CSI capture size |
 | `quality` | JPEG quality |
@@ -116,7 +122,7 @@ http://<ip>/control?var=<name>&val=<int>
 
 ```bash
 curl "http://192.168.0.3/control?var=quality&val=50"
-curl "http://192.168.0.3/control?var=framesize&val=3"
+curl "http://192.168.0.3/control?var=framesize&val=7"   # QVGA
 curl "http://192.168.0.3/control?var=hmirror&val=1"
 curl "http://192.168.0.3/control?var=aec&val=0"
 curl "http://192.168.0.3/control?var=aec_value&val=600"
@@ -133,17 +139,22 @@ curl "http://192.168.0.3/control?var=colorbar&val=1"
 | --- | --- | --- | --- |
 | `quality` | `1`–`100` | JPEG quality (lower = faster/smaller) | `stream.setQuality(q)` |
 | `frameskip` | `0`+ | Skip N frames between encodes | `stream.setFrameSkip(n)` |
-| `framesize` | `0`–`4` | Output size via PPA | `stream.setFramesize(fs)` |
+| `framesize` | `0`–`9` | Output size via PPA | `stream.setFramesize(fs)` |
 
 #### `framesize` values
 
 | `val` | Enum | Output |
 | :---: | --- | --- |
-| `0` | `ESP32P4_STREAM_SVGA` | 800×640 |
-| `1` | `ESP32P4_STREAM_VGA` | 640×480 |
-| `2` | `ESP32P4_STREAM_HVGA` | 480×320 |
-| `3` | `ESP32P4_STREAM_QVGA` | 320×240 |
-| `4` | `ESP32P4_STREAM_QQVGA` | 160×120 |
+| `0` | `ESP32P4_STREAM_FHD` | 1920×1072 |
+| `1` | `ESP32P4_STREAM_HD` | 1280×720 |
+| `2` | `ESP32P4_STREAM_XGA` | 1024×576 |
+| `3` | `ESP32P4_STREAM_SVGA` | 800×640 |
+| `4` | `ESP32P4_STREAM_VGA` | 640×480 |
+| `5` | `ESP32P4_STREAM_HVGA` | 480×320 |
+| `6` | `ESP32P4_STREAM_CIF` | 400×288 |
+| `7` | `ESP32P4_STREAM_QVGA` | 320×240 |
+| `8` | `ESP32P4_STREAM_HQVGA` | 240×176 |
+| `9` | `ESP32P4_STREAM_QQVGA` | 160×128 |
 
 ```cpp
 stream.setFramesize(ESP32P4_STREAM_VGA);
@@ -218,7 +229,7 @@ Set **before** `cam.begin(cfg)` — not via HTTP.
 | --- | --- | --- |
 | `fb_count` | More buffering / smoother stream | `2` or `3` |
 | `frame_size` | Native CSI resolution | `ESP32P4_FRAMESIZE_800X640` |
-| `pixel_format` | Sketch framebuffer (keep RGB565; not the CSI RAW10 table) | `ESP32P4_PIXFORMAT_RGB565` |
+| `pixel_format` | Sketch framebuffer (default RGB565; not the CSI RAW10 table) | `ESP32P4_PIXFORMAT_RGB565` |
 | `sensor` | Force sensor | `ESP32P4_SENSOR_OV5647` |
 | `lane_bit_rate_mbps` | CSI lane rate | `200` |
 | `ldo_mv` / `ldo_chan` | MIPI PHY power | `2500` / `3` |
@@ -251,6 +262,53 @@ and sets `<img src="http://host:81/stream">`.
 
 ---
 
+## Debug pipeline (`APP_DEBUG` + NVS)
+
+Library logs for camera / PPA / JPEG / stream / Wi-Fi / audio / H.264 / SD / ISP / net.
+
+Each example should call:
+
+```cpp
+#ifndef APP_NAME
+#define APP_NAME "04_WiFiMjpeg"
+#endif
+#ifndef APP_DEBUG
+#define APP_DEBUG ESP32P4_DBG_LIVE
+#endif
+ESP32P4_Debug dbg;
+dbg.begin(APP_NAME, APP_DEBUG);
+```
+
+`stream.loop()` (or `dbg.poll()`) reads Serial. Saved mask lives in NVS namespace `csi_dbg`.
+
+| Bit | Name | Value |
+| --- | --- | :---: |
+| cam | `ESP32P4_DBG_CAM` | 1 |
+| ppa | `ESP32P4_DBG_PPA` | 2 |
+| jpeg | `ESP32P4_DBG_JPEG` | 4 |
+| stream | `ESP32P4_DBG_STREAM` | 8 |
+| wifi | `ESP32P4_DBG_WIFI` | 16 |
+| audio | `ESP32P4_DBG_AUDIO` | 32 |
+| h264 | `ESP32P4_DBG_H264` | 64 |
+| sd | `ESP32P4_DBG_SD` | 128 |
+| isp | `ESP32P4_DBG_ISP` | 256 |
+| net | `ESP32P4_DBG_NET` | 512 |
+| live | `ESP32P4_DBG_LIVE` | 543 |
+
+Serial: `d` dump, `d=543` set LIVE, `d=r` restore sketch mask.
+
+HTTP (UI port):
+
+```bash
+curl "http://<ip>/debug"
+curl "http://<ip>/control?var=debug&val=543"
+curl "http://<ip>/control?var=debug_ms&val=1000"
+```
+
+Log tags: `CSI_E` event, `CSI_D` periodic, `CSI_S` stall. `jpeg send stall` = TCP made no progress for 250 ms after a JPEG body started. `skip jpeg - tcp congested` = frame dropped to keep the session.
+
+---
+
 ## Python viewer
 
 ```bash
@@ -265,9 +323,25 @@ python examples/04_WiFiMjpeg/cam_wifi_viewer.py <ip> 81
 | Layer | How to change | When |
 | --- | --- | --- |
 | Board / PSRAM | Arduino IDE Tools menu | Compile time |
-| CSI pins / FB count | `esp32p4_cam_config_t` | Before `cam.begin` |
+| CSI pins / FB count | `board_config.h` → `esp32csi_cam_config()` | Before `cam.begin` |
 | Mirror / AEC / gain | `cam.set*` or `/control` | Runtime |
-| JPEG quality / stream size | `stream.set*` or `/control` | Runtime |
-| Face model | `face.begin(Model)` | ESP-IDF only |
+| JPEG quality / stream size | `stream.set*` or `/control` (`framesize` 0–9) | Runtime |
+| Debug mask | `dbg.begin`, Serial `d=`, `/control?var=debug` | Runtime (NVS `csi_dbg`) |
+| Detect / face model | `det.begin(ESP32P4_DET_*)` / `face.begin(ESP32P4_FACE_*)` | After storage mount |
+
+---
+
+## WebPreview (example 43)
+
+`ESP32P4_WebPreview` does **not** run the Camera UI. You `capture()` → `present(fb)`. One HTTP port (default 80):
+
+| Path | Role |
+| --- | --- |
+| `GET /` | HTML + `<img src="/stream">` |
+| `GET /stream` | MJPEG of the last `present()` |
+| `GET /jpg` | Last JPEG still |
+| `GET /dets` | JSON from `preview.setStatusJson(...)` |
+
+No `/control` sensor sliders. For those use `ESP32P4_MjpegServer`.
 
 ← [API Reference](API-Reference.md) · [Home](Home.md) →

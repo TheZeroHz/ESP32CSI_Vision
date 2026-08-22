@@ -30,3 +30,4 @@ esp_err_t write_bmp(const img_t &img, const char *file_name);
 img_t read_bmp(const char *file_name);
 } // namespace image
 } // namespace dl
+

@@ -1,28 +1,28 @@
 /**
- * 16_MicSdWebFileManager - mic record + WebFileManager over Ethernet
+ * 16_MicSdWebFileManager — mic record + WebFileManager
  *
- * Board: Guition JC-ESP32P4-M3 (ES8311 mic, IP101 Ethernet, microSD)
+ * Mic / SD / ETH GPIOs: board_config.h (docs/Custom-Boards.md).
  *
- * - Short GPIO1 to GND (header pin) to record 10 seconds of audio
- *   (SW1/BOOT is GPIO35 = Ethernet TXD1, so it cannot be used while ETH is up.
- *    ESP32-P4 has no capacitive "touch" GPIOs on this header.)
- * - Or type 'r' in Serial Monitor
- * - Files saved as /Recording/REC_00001.wav, REC_00002.wav, ...
- * - Browse / preview / download them in the web UI (audio preview supported)
+ * - Short GPIO1 to GND to record 10 seconds (or type 'r' on Serial)
+ * - Files: /Recording/REC_00001.wav …
+ * - Browse them in the web UI
  *
- * Primary volume is SD; FFat is added as a second WFM volume when the flash
- * FAT partition mounts (e.g. app3M_fat9M_16MB).
- *
- * WebFileManager is bundled in ESP32CSI_Vision (no separate library).
- *
- * Serial @ 115200 · FAT32 SD · PSRAM on · Arduino-ESP32 3.x
+ * Serial @ 115200 · FAT32 SD · PSRAM on
  */
 
 #ifndef HTTP_UPLOAD_BUFLEN
 #define HTTP_UPLOAD_BUFLEN 16384
 #endif
 
-#include <ESP32CSI_Vision.h>
+#include "board_config.h"
+
+#ifndef APP_NAME
+#define APP_NAME "16_MicSdWebFileManager"
+#endif
+#ifndef APP_DEBUG
+#define APP_DEBUG ESP32P4_DBG_AUDIO | ESP32P4_DBG_SD
+#endif
+
 #include <ESP_I2S.h>
 #include "es8311_m3.h"
 
@@ -146,15 +146,18 @@ static bool recordOneClip() {
   return true;
 }
 
+ESP32P4_Debug dbg;
+
 void setup() {
   Serial.begin(115200);
   delay(800);
   Serial.println();
   Serial.println("=== 16_MicSdWebFileManager ===");
+  dbg.begin(APP_NAME, APP_DEBUG);
 
   pinMode(REC_BTN_PIN, INPUT_PULLUP);
 
-  if (!sd.begin(ESP32P4_BOARD_GUITION_M3)) {
+  if (!sd.begin(esp32csi_sd_config())) {
     Serial.println("SD FAILED");
     while (true) delay(1000);
   }
@@ -168,7 +171,7 @@ void setup() {
   }
 
   net.setHostname("csi-mic-archive");
-  if (!net.beginEthernet(WfmNetwork::guitionM3Eth())) {
+  if (!net.beginEthernet(esp32csi_wfm_eth())) {
     Serial.println("ETH.begin FAILED");
     while (true) delay(1000);
   }
@@ -192,6 +195,7 @@ void setup() {
 }
 
 void loop() {
+  dbg.poll();
   if (!recording) wfm.loop();
 
   while (Serial.available()) {

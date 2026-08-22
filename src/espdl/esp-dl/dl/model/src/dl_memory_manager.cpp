@@ -180,8 +180,9 @@ void sort_memory_list(std::list<MemoryChunk *> &memory_list)
 {
     // sort free list by size
     memory_list.sort([](MemoryChunk *a, MemoryChunk *b) {
-        return a->size < b->size; // 升序排序
+        return a->size < b->size; // å‡åºæŽ’åº
     });
 }
 
 } // namespace dl
+

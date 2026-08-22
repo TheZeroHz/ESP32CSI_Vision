@@ -29,3 +29,4 @@ template <bool ByteSwap>
 inline constexpr bool is_yuv2yuv_v<YUV2YUV<ByteSwap>> = true;
 } // namespace image
 } // namespace dl
+

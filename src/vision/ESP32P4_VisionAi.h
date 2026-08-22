@@ -16,9 +16,10 @@
 #include "img/ESP32P4_Img.h"
 
 struct esp32p4_det_t {
-  float score;
-  int x, y, w, h;
-  int category;
+  float score;         // 0..1
+  int x, y, w, h;      // axis-aligned box in source pixels (top-left + size)
+  int category;        // class id (COCO id, or 0 for single-class models)
+  const char *label;   // class name ("dog", "person", …); static string, never free
 };
 
 struct esp32p4_keypoint_t {
@@ -29,6 +30,36 @@ struct esp32p4_keypoint_t {
 struct esp32p4_pose_t {
   esp32p4_det_t box;
   esp32p4_keypoint_t kp[17];  // COCO-17 (ESP-VISION YOLO11nPose)
+};
+
+struct esp32p4_seg_t {
+  esp32p4_det_t box;
+  const uint8_t *mask;  // box-sized 0/1 raster, owned by ESP32P4_Seg until next detect()
+  int mask_w;
+  int mask_h;
+};
+
+struct esp32p4_cls_t {
+  const char *label;
+  float score;
+};
+
+struct esp32p4_gesture_t {
+  esp32p4_det_t hand;
+  const char *label;
+  float score;
+};
+
+struct esp32p4_reid_t {
+  esp32p4_det_t box;
+  int id;  // enrolled id, or -1 if unknown
+  float similarity;
+};
+
+struct esp32p4_ocr_t {
+  int points[8];  // x0,y0 … x3,y3
+  float score;
+  char text[96];
 };
 
 struct esp32p4_letterbox_t {
@@ -73,4 +104,17 @@ class ESP32P4_VisionAi {
   /** Draw detection boxes + optional label onto RGB565. */
   static void drawDets(uint16_t *img, int w, int h, const esp32p4_det_t *dets, int n,
                        uint16_t color, int thickness = 2);
+
+  /**
+   * JSON for other projects / HTTP / Serial.
+   * {"n":2,"ms":35,"dets":[{"label":"dog","class":16,"score":0.87,"x":10,"y":20,"w":100,"h":80}]}
+   * Returns bytes written (excluding NUL), or 0 on failure.
+   */
+  static size_t detsToJson(const esp32p4_det_t *dets, int n, char *buf, size_t cap, int ms = -1);
+  /** Human line: "cat 0.87 @ 10,20 100x80 · cat 0.40 @ …" */
+  static size_t detsToLine(const esp32p4_det_t *dets, int n, char *buf, size_t cap);
+  static size_t clsToJson(const esp32p4_cls_t *hits, int n, char *buf, size_t cap, int ms = -1);
+  static size_t ocrToJson(const esp32p4_ocr_t *hits, int n, char *buf, size_t cap, int ms = -1);
+  static size_t gestureToJson(const esp32p4_gesture_t *hits, int n, char *buf, size_t cap,
+                              int ms = -1);
 };

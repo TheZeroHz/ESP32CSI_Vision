@@ -54,6 +54,7 @@ static bool sc2336_configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p
     m.height = 1080;
     m.lane_mbps = 405;
     m.framesize_tag = ESP32P4_FRAMESIZE_1080P;
+    m.fps = 30;
   } else {
     regs = (const esp32p4_reg8_t *)sc2336_mipi_2lane_24Minput_1280x720_raw10_30fps;
     m.name = "SC2336 1280x720 RAW10 30fps";
@@ -61,6 +62,7 @@ static bool sc2336_configure(uint8_t addr7, esp32p4_cam_framesize_t want, esp32p
     m.height = 720;
     m.lane_mbps = 405;
     m.framesize_tag = ESP32P4_FRAMESIZE_HD;
+    m.fps = 30;
   }
   m.regs = regs;
   m.regs_count = esp32p4_cam_reg8_count(regs);

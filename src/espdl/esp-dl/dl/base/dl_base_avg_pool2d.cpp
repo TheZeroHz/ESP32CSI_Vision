@@ -177,3 +177,4 @@ void avg_pool2d<float>(void *args_ptr)
 
 } // namespace base
 } // namespace dl
+

@@ -106,7 +106,7 @@ typedef void (*n_wise_func_s8_t)(int8_t *, int32_t *, const ArgsType<int8_t> &);
 template <typename out_feature_t, typename in_feature_t, typename... feature_t>
 using ImplFunc_t = std::function<void(out_feature_t *, in_feature_t *, feature_t *..., void *)>;
 
-// TODO:剥离出多核时 input output 的指针分配
+// TODO:å‰¥ç¦»å‡ºå¤šæ ¸æ—¶ input output çš„æŒ‡é’ˆåˆ†é…
 template <typename feature_t>
 void load_input_output_ptr()
 {
@@ -483,7 +483,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                                   (filter_w - args.filter_width - filter_width_excess) * args.dilation_w) -
                                  args.padding_w_head);
                         args.filter_y_offset =
-                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.xtensa_dilation_y_offset =
                             (args.xtensa_dilation_y_offset_stable - args.input_channel -
@@ -505,7 +505,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                         (args.xtensa_dilation_y_offset_stable - args.input_channel -
                          (args.filter_width - 1) * args.dilation_w * args.input_channel_with_padding) *
                         sizeof(feature_t);
-                    args.filter_y_offset = 0; // ??? c， xtensa， tie 顺序不同
+                    args.filter_y_offset = 0; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     args.filter_y_offset_unaligned = 0;
                     args.filter_element = filter_ptr_y;
                     args.filter_element_unaligned = filter_ptr_y_unaligned;
@@ -521,7 +521,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                                              (n_w_head + n_w_body + output_x) * args.stride_x + args.dilation_w - 1) /
                             args.dilation_w;
                         args.filter_y_offset =
-                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.xtensa_dilation_y_offset =
                             (args.xtensa_dilation_y_offset_stable - args.input_channel -
@@ -561,7 +561,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                                   (filter_w - args.filter_width - filter_width_excess) * args.dilation_w) -
                                  args.padding_w_head);
                         args.filter_y_offset =
-                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.xtensa_dilation_y_offset =
                             (args.xtensa_dilation_y_offset_stable - args.input_channel -
@@ -582,7 +582,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                         (args.xtensa_dilation_y_offset_stable - args.input_channel -
                          (args.filter_width - 1) * args.dilation_w * args.input_channel_with_padding) *
                         sizeof(feature_t);
-                    args.filter_y_offset = 0; // ??? c， xtensa， tie 顺序不同
+                    args.filter_y_offset = 0; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     args.filter_y_offset_unaligned = 0;
                     args.filter_element = filter_ptr_y;
                     args.filter_element_unaligned = filter_ptr_y_unaligned;
@@ -598,7 +598,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                                              (n_w_head + n_w_body + output_x) * args.stride_x + args.dilation_w - 1) /
                             args.dilation_w;
                         args.filter_y_offset =
-                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.xtensa_dilation_y_offset =
                             (args.xtensa_dilation_y_offset_stable - args.input_channel -
@@ -640,7 +640,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                                   (filter_w - args.filter_width - filter_width_excess) * args.dilation_w) -
                                  args.padding_w_head);
                         args.filter_y_offset =
-                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.xtensa_dilation_y_offset =
                             (args.xtensa_dilation_y_offset_stable - args.input_channel -
@@ -657,7 +657,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
 
                     input_x_real = input_y_real + args.input_channel * (args.stride_x * n_w_head - args.padding_w_head);
                     args.filter_width = filter_w;
-                    args.filter_y_offset = 0; // ??? c， xtensa， tie 顺序不同
+                    args.filter_y_offset = 0; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     args.filter_y_offset_unaligned = 0;
                     args.xtensa_dilation_y_offset =
                         (args.xtensa_dilation_y_offset_stable - args.input_channel -
@@ -677,7 +677,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                                              (n_w_head + n_w_body + output_x) * args.stride_x + args.dilation_w - 1) /
                             args.dilation_w;
                         args.filter_y_offset =
-                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.xtensa_dilation_y_offset =
                             (args.xtensa_dilation_y_offset_stable - args.input_channel -
@@ -737,7 +737,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                                   (filter_w - args.filter_width - filter_width_excess) * args.dilation_w) -
                                  args.padding_w_head);
                         args.filter_y_offset =
-                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.xtensa_dilation_y_offset =
                             (args.xtensa_dilation_y_offset_stable - args.input_channel -
@@ -758,7 +758,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                         (args.xtensa_dilation_y_offset_stable - args.input_channel -
                          (args.filter_width - 1) * args.dilation_w * args.input_channel_with_padding) *
                         sizeof(feature_t);
-                    args.filter_y_offset = 0; // ??? c， xtensa， tie 顺序不同
+                    args.filter_y_offset = 0; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     args.filter_y_offset_unaligned = 0;
                     args.filter_element = filter_ptr_y;
                     args.filter_element_unaligned = filter_ptr_y_unaligned;
@@ -773,7 +773,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                                              (n_w_head + n_w_body + output_x) * args.stride_x + args.dilation_w - 1) /
                             args.dilation_w;
                         args.filter_y_offset =
-                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.xtensa_dilation_y_offset =
                             (args.xtensa_dilation_y_offset_stable - args.input_channel -
@@ -813,7 +813,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                                   (filter_w - args.filter_width - filter_width_excess) * args.dilation_w) -
                                  args.padding_w_head);
                         args.filter_y_offset =
-                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.xtensa_dilation_y_offset =
                             (args.xtensa_dilation_y_offset_stable - args.input_channel -
@@ -833,7 +833,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                         (args.xtensa_dilation_y_offset_stable - args.input_channel -
                          (args.filter_width - 1) * args.dilation_w * args.input_channel_with_padding) *
                         sizeof(feature_t);
-                    args.filter_y_offset = 0; // ??? c， xtensa， tie 顺序不同
+                    args.filter_y_offset = 0; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     args.filter_y_offset_unaligned = 0;
                     args.filter_element = filter_ptr_y;
                     args.filter_element_unaligned = filter_ptr_y_unaligned;
@@ -848,7 +848,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                                              (n_w_head + n_w_body + output_x) * args.stride_x + args.dilation_w - 1) /
                             args.dilation_w;
                         args.filter_y_offset =
-                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.xtensa_dilation_y_offset =
                             (args.xtensa_dilation_y_offset_stable - args.input_channel -
@@ -889,7 +889,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                                   (filter_w - args.filter_width - filter_width_excess) * args.dilation_w) -
                                  args.padding_w_head);
                         args.filter_y_offset =
-                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.xtensa_dilation_y_offset =
                             (args.xtensa_dilation_y_offset_stable - args.input_channel -
@@ -905,7 +905,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
 
                     input_x_real = input_y_real + args.input_channel * (args.stride_x * n_w_head - args.padding_w_head);
                     args.filter_width = filter_w;
-                    args.filter_y_offset = 0; // ??? c， xtensa， tie 顺序不同
+                    args.filter_y_offset = 0; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     args.filter_y_offset_unaligned = 0;
                     args.xtensa_dilation_y_offset =
                         (args.xtensa_dilation_y_offset_stable - args.input_channel -
@@ -924,7 +924,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                                              (n_w_head + n_w_body + output_x) * args.stride_x + args.dilation_w - 1) /
                             args.dilation_w;
                         args.filter_y_offset =
-                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.xtensa_dilation_y_offset =
                             (args.xtensa_dilation_y_offset_stable - args.input_channel -
@@ -989,7 +989,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                               (filter_w - args.filter_width - filter_width_excess) * args.dilation_w) -
                              args.padding_w_head);
                     args.filter_y_offset =
-                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     args.filter_element =
                         filter_ptr_y + (filter_w - args.filter_width - filter_width_excess) * filter_c_n_ptr_offset;
                     c_impl_func(buffer, input_x_real, args);
@@ -999,7 +999,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
 
                 input_x_real = input_y_real + args.input_channel * (args.stride_x * n_w_head - args.padding_w_head);
                 args.filter_width = filter_w;
-                args.filter_y_offset = 0; // ??? c， xtensa， tie 顺序不同
+                args.filter_y_offset = 0; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                 args.filter_element = filter_ptr_y;
                 for (size_t output_x = 0; output_x < n_w_body; output_x++) {
                     c_impl_func(buffer, input_x_real, args);
@@ -1013,7 +1013,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                                          (n_w_head + n_w_body + output_x) * args.stride_x + args.dilation_w - 1) /
                         args.dilation_w;
                     args.filter_y_offset =
-                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     c_impl_func(buffer, input_x_real, args);
                     n_wise_tail(output_yx, buffer, args);
                     output_yx += args.output_x_offset;
@@ -1046,7 +1046,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                               (filter_w - args.filter_width - filter_width_excess) * args.dilation_w) -
                              args.padding_w_head);
                     args.filter_y_offset =
-                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     args.filter_element =
                         filter_ptr_y + (filter_w - args.filter_width - filter_width_excess) * filter_c_n_ptr_offset;
                     c_impl_func(buffer, input_x_real, args);
@@ -1056,7 +1056,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
 
                 input_x_real = input_y_real + args.input_channel * (args.stride_x * n_w_head - args.padding_w_head);
                 args.filter_width = filter_w;
-                args.filter_y_offset = 0; // ??? c， xtensa， tie 顺序不同
+                args.filter_y_offset = 0; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                 args.filter_element = filter_ptr_y;
                 for (size_t output_x = 0; output_x < n_w_body; output_x++) {
                     c_impl_func_sp(buffer, input_x_real, args);
@@ -1070,7 +1070,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                                          (n_w_head + n_w_body + output_x) * args.stride_x + args.dilation_w - 1) /
                         args.dilation_w;
                     args.filter_y_offset =
-                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     c_impl_func(buffer, input_x_real, args);
                     n_wise_tail(output_yx, buffer, args);
                     output_yx += args.output_x_offset;
@@ -1104,7 +1104,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                               (filter_w - args.filter_width - filter_width_excess) * args.dilation_w) -
                              args.padding_w_head);
                     args.filter_y_offset =
-                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     args.filter_element =
                         filter_ptr_y + (filter_w - args.filter_width - filter_width_excess) * filter_c_n_ptr_offset;
                     c_impl_func(buffer, input_x_real, args);
@@ -1114,7 +1114,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
 
                 input_x_real = input_y_real + args.input_channel * (args.stride_x * n_w_head - args.padding_w_head);
                 args.filter_width = filter_w;
-                args.filter_y_offset = 0; // ??? c， xtensa， tie 顺序不同
+                args.filter_y_offset = 0; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                 args.filter_element = filter_ptr_y;
                 for (size_t output_x = 0; output_x < n_w_body; output_x++) {
                     c_impl_func(buffer, input_x_real, args);
@@ -1128,7 +1128,7 @@ void conv_operation_shell(ArgsType<feature_t> &args,
                                          (n_w_head + n_w_body + output_x) * args.stride_x + args.dilation_w - 1) /
                         args.dilation_w;
                     args.filter_y_offset =
-                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     c_impl_func(buffer, input_x_real, args);
                     n_wise_tail(output_yx, buffer, args);
                     output_yx += args.output_x_offset;
@@ -1306,7 +1306,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                                   (filter_w - args.filter_width - filter_width_excess) * args.dilation_w) -
                                  args.padding_w_head);
                         args.filter_y_offset =
-                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.tie_depth2d_dilation_y_offset =
                             (args.tie_depth2d_dilation_y_offset_stable -
@@ -1337,7 +1337,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                         ((args.filter_width - 1) * args.dilation_w +
                          (args.filter_height - 1) * args.dilation_h * args.input_width) *
                             args.input_channel_with_padding * sizeof(feature_t);
-                    args.filter_y_offset = filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                    args.filter_y_offset = filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     args.filter_y_offset_unaligned = 0;
                     args.filter_element = filter_ptr_y;
                     args.filter_element_unaligned = filter_ptr_y_unaligned;
@@ -1354,7 +1354,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                             args.dilation_w;
                         args.filter_w_rs1_1 = (args.filter_width >> 1) - 1;
                         args.filter_y_offset =
-                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.tie_depth2d_dilation_y_offset =
                             (args.tie_depth2d_dilation_y_offset_stable -
@@ -1399,7 +1399,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                                   (filter_w - args.filter_width - filter_width_excess) * args.dilation_w) -
                                  args.padding_w_head);
                         args.filter_y_offset =
-                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.tie_depth2d_dilation_y_offset =
                             (args.tie_depth2d_dilation_y_offset_stable -
@@ -1429,7 +1429,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                         ((args.filter_width - 1) * args.dilation_w +
                          (args.filter_height - 1) * args.dilation_h * args.input_width) *
                             args.input_channel_with_padding * sizeof(feature_t);
-                    args.filter_y_offset = filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                    args.filter_y_offset = filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     args.filter_y_offset_unaligned = 0;
                     args.filter_element = filter_ptr_y;
                     args.filter_element_unaligned = filter_ptr_y_unaligned;
@@ -1447,7 +1447,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                             args.dilation_w;
                         args.filter_w_rs1_1 = (args.filter_width >> 1) - 1;
                         args.filter_y_offset =
-                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.tie_depth2d_dilation_y_offset =
                             (args.tie_depth2d_dilation_y_offset_stable -
@@ -1493,7 +1493,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                                   (filter_w - args.filter_width - filter_width_excess) * args.dilation_w) -
                                  args.padding_w_head);
                         args.filter_y_offset =
-                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.tie_depth2d_dilation_y_offset =
                             (args.tie_depth2d_dilation_y_offset_stable -
@@ -1515,7 +1515,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                     input_x_real = input_y_real + args.input_channel * (args.stride_x * n_w_head - args.padding_w_head);
                     args.filter_width = filter_w;
                     args.filter_w_rs1_1 = (args.filter_width >> 1) - 1;
-                    args.filter_y_offset = filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                    args.filter_y_offset = filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     args.filter_y_offset_unaligned = 0;
                     args.tie_depth2d_dilation_y_offset =
                         (args.tie_depth2d_dilation_y_offset_stable -
@@ -1540,7 +1540,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                             args.dilation_w;
                         args.filter_w_rs1_1 = (args.filter_width >> 1) - 1;
                         args.filter_y_offset =
-                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.tie_depth2d_dilation_y_offset =
                             (args.tie_depth2d_dilation_y_offset_stable -
@@ -1605,7 +1605,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                                   (filter_w - args.filter_width - filter_width_excess) * args.dilation_w) -
                                  args.padding_w_head);
                         args.filter_y_offset =
-                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.tie_depth2d_dilation_y_offset =
                             (args.tie_depth2d_dilation_y_offset_stable -
@@ -1635,7 +1635,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                         ((args.filter_width - 1) * args.dilation_w +
                          (args.filter_height - 1) * args.dilation_h * args.input_width) *
                             args.input_channel_with_padding * sizeof(feature_t);
-                    args.filter_y_offset = filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                    args.filter_y_offset = filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     args.filter_y_offset_unaligned = 0;
                     args.filter_element = filter_ptr_y;
                     args.filter_element_unaligned = filter_ptr_y_unaligned;
@@ -1652,7 +1652,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                             args.dilation_w;
                         args.filter_w_rs1_1 = (args.filter_width >> 1) - 1;
                         args.filter_y_offset =
-                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.tie_depth2d_dilation_y_offset =
                             (args.tie_depth2d_dilation_y_offset_stable -
@@ -1696,7 +1696,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                                   (filter_w - args.filter_width - filter_width_excess) * args.dilation_w) -
                                  args.padding_w_head);
                         args.filter_y_offset =
-                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.tie_depth2d_dilation_y_offset =
                             (args.tie_depth2d_dilation_y_offset_stable -
@@ -1725,7 +1725,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                         ((args.filter_width - 1) * args.dilation_w +
                          (args.filter_height - 1) * args.dilation_h * args.input_width) *
                             args.input_channel_with_padding * sizeof(feature_t);
-                    args.filter_y_offset = filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                    args.filter_y_offset = filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     args.filter_y_offset_unaligned = 0;
                     args.filter_element = filter_ptr_y;
                     args.filter_element_unaligned = filter_ptr_y_unaligned;
@@ -1742,7 +1742,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                             args.dilation_w;
                         args.filter_w_rs1_1 = (args.filter_width >> 1) - 1;
                         args.filter_y_offset =
-                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.tie_depth2d_dilation_y_offset =
                             (args.tie_depth2d_dilation_y_offset_stable -
@@ -1787,7 +1787,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                                   (filter_w - args.filter_width - filter_width_excess) * args.dilation_w) -
                                  args.padding_w_head);
                         args.filter_y_offset =
-                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.tie_depth2d_dilation_y_offset =
                             (args.tie_depth2d_dilation_y_offset_stable -
@@ -1808,7 +1808,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                     input_x_real = input_y_real + args.input_channel * (args.stride_x * n_w_head - args.padding_w_head);
                     args.filter_width = filter_w;
                     args.filter_w_rs1_1 = (args.filter_width >> 1) - 1;
-                    args.filter_y_offset = filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                    args.filter_y_offset = filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     args.filter_y_offset_unaligned = 0;
                     args.tie_depth2d_dilation_y_offset =
                         (args.tie_depth2d_dilation_y_offset_stable -
@@ -1832,7 +1832,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                             args.dilation_w;
                         args.filter_w_rs1_1 = (args.filter_width >> 1) - 1;
                         args.filter_y_offset =
-                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                            (filter_w - args.filter_width + 1) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                         args.filter_y_offset_unaligned = (filter_w - args.filter_width) * unaligned_filter_c_n_offset;
                         args.tie_depth2d_dilation_y_offset =
                             (args.tie_depth2d_dilation_y_offset_stable -
@@ -1900,7 +1900,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                               (filter_w - args.filter_width - filter_width_excess) * args.dilation_w) -
                              args.padding_w_head);
                     args.filter_y_offset =
-                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     args.filter_element =
                         filter_ptr_y + (filter_w - args.filter_width - filter_width_excess) * filter_c_n_ptr_offset;
                     c_impl_func(buffer, input_x_real, args);
@@ -1910,7 +1910,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
 
                 input_x_real = input_y_real + args.input_channel * (args.stride_x * n_w_head - args.padding_w_head);
                 args.filter_width = filter_w;
-                args.filter_y_offset = 0; // ??? c， xtensa， tie 顺序不同
+                args.filter_y_offset = 0; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                 args.filter_element = filter_ptr_y;
                 for (size_t output_x = 0; output_x < n_w_body; output_x++) {
                     c_impl_func(buffer, input_x_real, args);
@@ -1924,7 +1924,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                                          (n_w_head + n_w_body + output_x) * args.stride_x + args.dilation_w - 1) /
                         args.dilation_w;
                     args.filter_y_offset =
-                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     c_impl_func(buffer, input_x_real, args);
                     n_wise_tail(output_yx, buffer, args);
                     output_yx += args.output_x_offset;
@@ -1956,7 +1956,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                               (filter_w - args.filter_width - filter_width_excess) * args.dilation_w) -
                              args.padding_w_head);
                     args.filter_y_offset =
-                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     args.filter_element =
                         filter_ptr_y + (filter_w - args.filter_width - filter_width_excess) * filter_c_n_ptr_offset;
                     c_impl_func(buffer, input_x_real, args);
@@ -1966,7 +1966,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
 
                 input_x_real = input_y_real + args.input_channel * (args.stride_x * n_w_head - args.padding_w_head);
                 args.filter_width = filter_w;
-                args.filter_y_offset = 0; // ??? c， xtensa， tie 顺序不同
+                args.filter_y_offset = 0; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                 args.filter_element = filter_ptr_y;
                 for (size_t output_x = 0; output_x < n_w_body; output_x++) {
                     c_impl_func_sp(buffer, input_x_real, args);
@@ -1980,7 +1980,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                                          (n_w_head + n_w_body + output_x) * args.stride_x + args.dilation_w - 1) /
                         args.dilation_w;
                     args.filter_y_offset =
-                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     c_impl_func(buffer, input_x_real, args);
                     n_wise_tail(output_yx, buffer, args);
                     output_yx += args.output_x_offset;
@@ -2013,7 +2013,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                               (filter_w - args.filter_width - filter_width_excess) * args.dilation_w) -
                              args.padding_w_head);
                     args.filter_y_offset =
-                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     args.filter_element =
                         filter_ptr_y + (filter_w - args.filter_width - filter_width_excess) * filter_c_n_ptr_offset;
                     c_impl_func(buffer, input_x_real, args);
@@ -2023,7 +2023,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
 
                 input_x_real = input_y_real + args.input_channel * (args.stride_x * n_w_head - args.padding_w_head);
                 args.filter_width = filter_w;
-                args.filter_y_offset = 0; // ??? c， xtensa， tie 顺序不同
+                args.filter_y_offset = 0; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                 args.filter_element = filter_ptr_y;
                 for (size_t output_x = 0; output_x < n_w_body; output_x++) {
                     c_impl_func(buffer, input_x_real, args);
@@ -2037,7 +2037,7 @@ void dwconv_operation_shell(ArgsType<feature_t> &args,
                                          (n_w_head + n_w_body + output_x) * args.stride_x + args.dilation_w - 1) /
                         args.dilation_w;
                     args.filter_y_offset =
-                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? c， xtensa， tie 顺序不同
+                        (filter_w - args.filter_width) * filter_c_n_offset; // ??? cï¼Œ xtensaï¼Œ tie é¡ºåºä¸åŒ
                     c_impl_func(buffer, input_x_real, args);
                     n_wise_tail(output_yx, buffer, args);
                     output_yx += args.output_x_offset;
@@ -2794,3 +2794,4 @@ struct requantizeArgsType {
 
 } // namespace base
 } // namespace dl
+

@@ -14,6 +14,7 @@ desktop.ini
 *.tmp
 _vendor_tmp/
 esp-vision-master/
+*.canvas.tsx
 
 # --- Arduino / PlatformIO build ---
 build/

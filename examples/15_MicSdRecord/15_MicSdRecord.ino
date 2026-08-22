@@ -1,23 +1,23 @@
 /**
- * 15_MicSdRecord - record Guition JC-ESP32P4-M3 mic to WAV on preferred storage
+ * 15_MicSdRecord — ES8311 mic → WAV on SD / flash.
  *
- * Codec: onboard ES8311 (I2C 0x18) + I2S mic path
- * Pin map / init adapted from esp32-ai esp32p4/mictest.
- *
- * Writes 16-bit mono PCM WAV @ 16 kHz to /AUDIO/REC_xxxxx.wav
- * Speaks nothing (PA off) to reduce howl while capturing.
- *
- * APP_STORAGE: AUTO / SD / FFAT / LITTLEFS / SPIFFS
- *
- * Serial @ 115200 · PSRAM recommended
- * Board: Guition JC-ESP32P4-M3
+ * Mic + SD GPIOs: board_config.h (docs/Custom-Boards.md).
+ * Not tied to one vendor. Waveshare Nano: set CFG_MIC_DIN 11, CFG_MIC_PA 53.
  */
 
 #ifndef APP_STORAGE
 #define APP_STORAGE ESP32P4_STORAGE_AUTO
 #endif
 
-#include <ESP32CSI_Vision.h>
+#include "board_config.h"
+
+#ifndef APP_NAME
+#define APP_NAME "15_MicSdRecord"
+#endif
+#ifndef APP_DEBUG
+#define APP_DEBUG ESP32P4_DBG_AUDIO | ESP32P4_DBG_SD
+#endif
+
 #include <ESP_I2S.h>
 #include "es8311_m3.h"
 
@@ -73,14 +73,19 @@ static void writeWavHeader(File &f, uint32_t data_bytes, uint32_t sample_rate) {
   le32(data_bytes);
 }
 
+ESP32P4_Debug dbg;
+
 void setup() {
   Serial.begin(115200);
   delay(1200);
   Serial.println();
   Serial.println("=== 15_MicSdRecord (ES8311 -> WAV) ===");
-  Serial.printf("APP_STORAGE pref=%s\n", ESP32P4_StoragePref::kindName(APP_STORAGE));
+  dbg.begin(APP_NAME, APP_DEBUG);
+  Serial.printf("APP_STORAGE pref=%s\n", store.kindName(APP_STORAGE));
+  esp32csi_print_sd_config(esp32csi_sd_config());
+  esp32csi_print_mic_config(esp32csi_mic_config());
 
-  if (!store.begin(APP_STORAGE, false, &sd, ESP32P4_BOARD_GUITION_M3)) {
+  if (!store.begin(APP_STORAGE, false, &sd, (esp32p4_board_t)ESP32CSI_BOARD)) {
     Serial.println("Storage FAILED - insert SD or use a flash partition");
     while (true) delay(1000);
   }
@@ -157,5 +162,6 @@ void setup() {
 }
 
 void loop() {
+  dbg.poll();
   delay(1000);
 }

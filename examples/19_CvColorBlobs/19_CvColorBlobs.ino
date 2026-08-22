@@ -12,7 +12,15 @@
  *   Also builds a 224×224 letterbox RGB888 tensor (ESP-DL input shape)
  */
 
-#include <ESP32CSI_Vision.h>
+#include "board_config.h"
+
+#ifndef APP_NAME
+#define APP_NAME "19_CvColorBlobs"
+#endif
+#ifndef APP_DEBUG
+#define APP_DEBUG ESP32P4_DBG_CAM
+#endif
+
 
 ESP32P4_Camera cam;
 
@@ -25,12 +33,17 @@ static uint8_t *tmp = nullptr;
 static uint16_t *labels = nullptr;
 static uint8_t *tensor = nullptr;  // letterbox RGB888
 
+ESP32P4_Cv cv;
+ESP32P4_VisionAi vai;
+ESP32P4_Debug dbg;
+
 void setup() {
   Serial.begin(115200);
   delay(1200);
   Serial.println("=== 19_CvColorBlobs (cv + vision AI helpers) ===");
+  dbg.begin(APP_NAME, APP_DEBUG);
 
-  if (!cam.begin(ESP32P4_BOARD_GUITION_M3)) {
+  if (!cam.begin(esp32csi_cam_config())) {
     Serial.println("camera FAILED");
     while (true) delay(1000);
   }
@@ -54,6 +67,7 @@ void setup() {
 }
 
 void loop() {
+  dbg.poll();
   camera_fb_t *fb = cam.capture();
   if (!fb) return;
 
@@ -61,22 +75,22 @@ void loop() {
   const int h = fb->height;
   auto *rgb = (uint16_t *)fb->buf;
 
-  ESP32P4_Cv::inRangeHsv(rgb, w, h, mask, LO, HI);
-  ESP32P4_Cv::erode(mask, w, h, tmp, 1);
-  ESP32P4_Cv::dilate(tmp, w, h, mask, 2);
+  cv.inRangeHsv(rgb, w, h, mask, LO, HI);
+  cv.erode(mask, w, h, tmp, 1);
+  cv.dilate(tmp, w, h, mask, 2);
 
   esp32p4_blob_t blobs[8];
-  int n = ESP32P4_Cv::findBlobs(mask, w, h, blobs, 8, 400, labels);
+  int n = cv.findBlobs(mask, w, h, blobs, 8, 400, labels);
 
   const uint16_t green = 0x07E0;
   for (int i = 0; i < n; i++) {
-    ESP32P4_Cv::drawBlob(rgb, w, h, blobs[i], green, 2);
+    cv.drawBlob(rgb, w, h, blobs[i], green, 2);
     Serial.printf("blob[%d] area=%d cx=%d cy=%d box=%d,%d %dx%d\n", i, blobs[i].area, blobs[i].cx,
                   blobs[i].cy, blobs[i].box.x, blobs[i].box.y, blobs[i].box.w, blobs[i].box.h);
   }
 
   esp32p4_letterbox_t lb{};
-  if (ESP32P4_VisionAi::letterboxRgb565(rgb, w, h, tensor, 224, 224, &lb)) {
+  if (vai.letterboxRgb565(rgb, w, h, tensor, 224, 224, &lb)) {
     static uint32_t last = 0;
     if (millis() - last > 2000) {
       last = millis();

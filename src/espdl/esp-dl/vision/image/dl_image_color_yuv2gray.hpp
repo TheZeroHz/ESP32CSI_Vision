@@ -54,3 +54,4 @@ template <bool YUYVOrUYVY, typename ExtraProcess>
 inline constexpr bool is_yuv2gray_v<YUV2Gray<YUYVOrUYVY, ExtraProcess>> = true;
 } // namespace image
 } // namespace dl
+

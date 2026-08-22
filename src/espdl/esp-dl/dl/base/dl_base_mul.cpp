@@ -268,3 +268,4 @@ void elemwise_mul(elemwiseArgsType<float> *args)
 
 } // namespace base
 } // namespace dl
+

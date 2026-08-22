@@ -91,3 +91,4 @@ dl::Model *DetectImpl::get_raw_model(int idx)
 }
 } // namespace detect
 } // namespace dl
+

@@ -102,3 +102,4 @@ template <bool YUYVOrUYVY, bool RGBSwap, typename ExtraProcess>
 inline constexpr bool is_yuv2rgb888_v<YUV2RGB888<YUYVOrUYVY, RGBSwap, ExtraProcess>> = true;
 } // namespace image
 } // namespace dl
+

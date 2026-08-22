@@ -1,4 +1,12 @@
-#include <ESP32CSI_Vision.h>
+#include "board_config.h"
+
+#ifndef APP_NAME
+#define APP_NAME "03_JpegDecode"
+#endif
+#ifndef APP_DEBUG
+#define APP_DEBUG ESP32P4_DBG_JPEG
+#endif
+
 
 // 16x16 solid red JPEG generated for decoder smoke-test.
 static const uint8_t kTinyJpg[] = {
@@ -28,10 +36,13 @@ static const uint8_t kTinyJpg[] = {
 
 ESP32P4_Jpeg jpeg;
 
+ESP32P4_Debug dbg;
+
 void setup() {
   Serial.begin(115200);
   delay(1200);
   Serial.println("=== 03_JpegDecode ===");
+  dbg.begin(APP_NAME, APP_DEBUG);
   if (!jpeg.begin(64, 64, 50)) {
     Serial.println("jpeg engine FAILED");
     return;
@@ -47,4 +58,7 @@ void setup() {
   Serial.printf("decoded %u bytes  %ux%u\n", (unsigned)n, (unsigned)w, (unsigned)h);
 }
 
-void loop() { delay(1000); }
+void loop() {
+  dbg.poll();
+  delay(1000);
+}

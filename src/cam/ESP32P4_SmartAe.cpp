@@ -92,6 +92,7 @@ void ESP32P4_SmartAe::setEnabled(bool on) {
   }
   _en = on;
   if (on) {
+    (void)_cam->setIspAe(false);
 #if ESP32P4_SMART_AE_HAS_OV5647
     if (_cam->sensorType() == ESP32P4_SENSOR_OV5647) {
       uint16_t m = ov5647_exposure_max_lines();
@@ -105,6 +106,8 @@ void ESP32P4_SmartAe::setEnabled(bool on) {
     (void)_cam->setGainCeiling(ESP32P4_SMART_AE_GAIN_CEIL_HI);
     applyManualMode();
     _have_iir = false;
+  } else {
+    (void)_cam->setIspAe(true);
   }
 }
 

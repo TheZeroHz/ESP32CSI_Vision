@@ -78,3 +78,4 @@ void relu<int8_t>(void *const args_ptr)
 }
 } // namespace base
 } // namespace dl
+

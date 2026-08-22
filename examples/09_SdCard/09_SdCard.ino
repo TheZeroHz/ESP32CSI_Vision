@@ -1,22 +1,34 @@
 /**
- * 09_SdCard — microSD read/write via ESP32CSI_Vision
+ * 09_SdCard — SDMMC slot on YOUR carrier.
  *
- * Guition JC-ESP32P4-M3 onboard TF slot (SDMMC + LDO ch4).
- * Format card FAT32. Serial @ 115200.
+ * Set CFG_SD_* in board_config.h (docs/Custom-Boards.md).
+ * FAT32. Serial @ 115200. 1-bit bus: CFG_SD_1BIT 1.
  */
 
-#include <ESP32CSI_Vision.h>
+#ifndef APP_NAME
+#define APP_NAME "09_SdCard"
+#endif
+#ifndef APP_DEBUG
+#define APP_DEBUG ESP32P4_DBG_SD
+#endif
 
+#include "board_config.h"
+
+esp32p4_sd_config_t sd_cfg = esp32csi_sd_config();
 ESP32P4_Sd sd;
+
+ESP32P4_Debug dbg;
 
 void setup() {
   Serial.begin(115200);
   delay(1200);
   Serial.println("=== 09_SdCard ===");
+  dbg.begin(APP_NAME, APP_DEBUG);
 
-  // Same board preset style as ESP32P4_Camera
-  if (!sd.begin(ESP32P4_BOARD_GUITION_M3)) {
-    Serial.println("sd.begin FAILED");
+  sd_cfg.frequency = SDMMC_FREQ_DEFAULT;
+  esp32csi_print_sd_config(sd_cfg);
+  if (!sd.begin(sd_cfg)) {
+    Serial.println("sd.begin FAILED — ESP32CSI_SD_* vs schematic, FAT32, LDO");
     while (true) delay(1000);
   }
 
@@ -26,7 +38,6 @@ void setup() {
 
   sd.listDir("/", 1);
 
-  // Write / append / read helpers
   if (!sd.writeFile("/hello.txt", "Hello from ESP32CSI_Vision\n")) {
     Serial.println("writeFile failed");
   }
@@ -37,28 +48,9 @@ void setup() {
   if (sd.readFile("/hello.txt", buf, sizeof(buf), &n)) {
     Serial.printf("read %u bytes: %s", (unsigned)n, buf);
   }
-
-  // Raw FS access when you need File streams
-  File log = sd.fs().open("/log.txt", FILE_APPEND);
-  if (log) {
-    log.printf("boot ms=%lu\n", (unsigned long)millis());
-    log.close();
-  }
-
-  sd.listDir("/", 0);
-  Serial.println("SD test done.");
 }
 
 void loop() {
-  static uint32_t last = 0;
-  if (millis() - last < 5000) return;
-  last = millis();
-
-  char line[48];
-  snprintf(line, sizeof(line), "heartbeat %lu\n", (unsigned long)millis());
-  if (sd.appendFile("/heartbeat.txt", line)) {
-    Serial.print(line);
-  } else {
-    Serial.println("heartbeat append failed");
-  }
+  dbg.poll();
+  delay(2000);
 }

@@ -88,3 +88,4 @@ template <bool YUYVOrUYVY, typename ExtraProcess>
 inline constexpr bool is_yuv2hsv_v<YUV2HSV<YUYVOrUYVY, ExtraProcess>> = true;
 } // namespace image
 } // namespace dl
+

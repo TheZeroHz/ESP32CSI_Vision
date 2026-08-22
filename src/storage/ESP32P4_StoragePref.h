@@ -2,6 +2,9 @@
 
 #include <Arduino.h>
 #include <FS.h>
+#include <FFat.h>
+#include <LittleFS.h>
+#include <SPIFFS.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -12,9 +15,12 @@
 /**
  * User preference for where photos, video, models, face DB, and settings live.
  *
- * Arduino FS paths are always root-relative on the chosen volume
- * (e.g. "/IMG/…", "/models/p4/…"). ESP-DL / fopen need the VFS root
- * ("/sdcard", "/ffat", "/littlefs", "/spiffs").
+ * begin() mounts the preferred volume as primary, then also mounts any other
+ * available volumes (SD, FFat, LittleFS, SPIFFS). Settings/capture stay on
+ * primary; models are searched on every mounted volume.
+ *
+ * Arduino FS paths are always root-relative ("/IMG/…", "/models/p4/…").
+ * ESP-DL / fopen need the VFS root ("/sdcard", "/ffat", "/littlefs", "/spiffs").
  *
  * Partition tip: use a scheme with a FAT data partition for FFat
  * (e.g. app3M_fat9M_16MB). Large video is usually happier on microSD.
@@ -58,16 +64,41 @@ class ESP32P4_StoragePref {
   uint64_t totalBytes() const;
   uint64_t usedBytes() const;
 
+  /** Mounted volumes (primary first). extras are also registered for model search. */
+  int volumeCount() const { return _nvol; }
+  const char *volumeLabel(int i) const;
+  uint64_t volumeTotal(int i) const;
+  uint64_t volumeUsed(int i) const;
+  /** "SD+FFat" etc. — valid until the next call. */
+  const char *volumeSummary() const;
+
+  /** Point ESP-DL at whichever mounted volume has rel (Arduino FS path). */
+  bool locateModel(const char *rel);
+
+  /** Expose extra volumes in WebFileManager (call after constructing WFM). */
+  bool attachToWfm(class WebFileManager &wfm);
+
   /** Re-apply model mount (also done automatically in begin()). */
   void applyModelMount() const;
 
   static const char *kindName(esp32p4_storage_kind_t k);
 
  private:
+  struct Vol {
+    esp32p4_storage_kind_t kind;
+    fs::FS *fs;
+    char vfs[16];
+    char label[12];
+  };
+
   bool mountSd(ESP32P4_Sd *sd, esp32p4_board_t board);
   bool mountFFat(bool format_on_fail);
   bool mountLittleFS(bool format_on_fail);
   bool mountSPIFFS(bool format_on_fail);
+  bool mountFlash(bool format_on_fail);
+  bool addVol(esp32p4_storage_kind_t kind, fs::FS *fs, const char *vfs, const char *label);
+  bool hasKind(esp32p4_storage_kind_t kind) const;
+  void mountExtras(bool format_flash_on_fail, ESP32P4_Sd *sd, esp32p4_board_t board);
   void clear();
 
   esp32p4_storage_kind_t _pref = ESP32P4_STORAGE_AUTO;
@@ -75,5 +106,8 @@ class ESP32P4_StoragePref {
   fs::FS *_fs = nullptr;
   ESP32P4_Sd *_sd = nullptr;
   bool _owns_sd_begin = false;
+  bool _sd_attempted = false;
   char _vfs[16] = "/sdcard";
+  Vol _vols[4] = {};
+  uint8_t _nvol = 0;
 };

@@ -63,6 +63,15 @@ class WebFileManager {
   bool startFileTask(UBaseType_t priority = 2, BaseType_t core = 0,
                      uint32_t stackWords = 8192);
 
+  /** Pause UI + file HTTP (e.g. while camera is recording to the same SD). */
+  void setPaused(bool pause) { _paused = pause; }
+  bool paused() const { return _paused; }
+  /** True shortly after a directory/list/preview/transfer hit the SD card. */
+  bool isBusy(uint32_t hold_ms = 1500) const {
+    uint32_t t = _busy_ms;
+    return t != 0 && (millis() - t) < hold_ms;
+  }
+
   bool started() const { return _started; }
   bool authEnabled() const { return _authUser && _authUser[0]; }
   uint16_t uiPort() const { return _uiPort; }
@@ -98,6 +107,8 @@ class WebFileManager {
   const char *_authUser = nullptr;
   const char *_authPass = "";
   bool _started = false;
+  volatile bool _paused = false;
+  volatile uint32_t _busy_ms = 0;
   TaskHandle_t _fileTask = nullptr;
 
   File _upload;
@@ -113,6 +124,7 @@ class WebFileManager {
   static void usageTaskThunk(void *arg);
 
   void bindRoutes();
+  void noteBusy() { _busy_ms = millis(); }
   bool requireAuth(WebServer &srv);
   void sendJsonOk(WebServer &srv);
   void sendJsonErr(WebServer &srv, int code, const char *msg);

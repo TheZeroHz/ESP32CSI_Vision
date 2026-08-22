@@ -1,0 +1,6 @@
+## IDF Component Manager — Arduino-as-component + local ESP32CSI_Vision (vendored ESP-DL)
+dependencies:
+  espressif/arduino-esp32:
+    version: "^3.3.0"
+  ESP32CSI_Vision:
+    path: ../..

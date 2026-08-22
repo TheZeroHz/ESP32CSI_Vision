@@ -14,6 +14,7 @@
 #include "mem/ESP32P4_Psram.h"
 #include "cv/ESP32P4_Cv.h"
 #include "ppa/ESP32P4_Ppa.h"
+#include "storage/esp32p4_model_mount.h"
 
 #include "esp_err.h"
 #include "esp_log.h"
@@ -31,6 +32,10 @@ static HumanFaceDetect::model_type_t toNative(ESP32P4_FaceDetect::Model m) {
     default:
       return HumanFaceDetect::MSRMNP_S8_V1;
   }
+}
+
+static HumanFaceFeat::model_type_t toFeatNative(ESP32P4_FaceAi::FeatModel f) {
+  return (f == ESP32P4_FaceAi::MBF_S8_V1) ? HumanFaceFeat::MBF_S8_V1 : HumanFaceFeat::MFN_S8_V1;
 }
 
 void ESP32P4_FaceAi::inferSize(int *iw, int *ih) const {
@@ -131,13 +136,33 @@ void ESP32P4_FaceAi::removeNameLocked(uint16_t id) {
   }
 }
 
-bool ESP32P4_FaceAi::begin(DetModel det, const char *db_path, const char *names_path) {
+bool ESP32P4_FaceAi::begin(DetModel det, const char *db_path, const char *names_path, FeatModel feat) {
   end();
   _det_model = det;
+  _feat_model = feat;
   _db_path[0] = '\0';
   _names_path[0] = '\0';
   if (db_path && db_path[0]) strncpy(_db_path, db_path, sizeof(_db_path) - 1);
   if (names_path && names_path[0]) strncpy(_names_path, names_path, sizeof(_names_path) - 1);
+
+  const char *files[4];
+  int nf = 0;
+  if (det == ESP32P4_FaceDetect::ESPDET_PICO_224) {
+    files[nf++] = "espdet_pico_224_224_face.espdl";
+  } else if (det == ESP32P4_FaceDetect::ESPDET_PICO_416) {
+    files[nf++] = "espdet_pico_416_416_face.espdl";
+  } else {
+    files[nf++] = "human_face_detect_msr_s8_v1.espdl";
+    files[nf++] = "human_face_detect_mnp_s8_v1.espdl";
+  }
+  if (_db_path[0]) {
+    files[nf++] = (feat == MBF_S8_V1) ? "human_face_feat_mbf_s8_v1.espdl"
+                                      : "human_face_feat_mfn_s8_v1.espdl";
+  }
+  if (!esp32p4_locate_models_p4_n(files, nf)) {
+    ESP_LOGW(TAG, "face models not found on any volume");
+    return false;
+  }
 
   auto *detector = new (std::nothrow) HumanFaceDetect(toNative(det), false);
   if (!detector) {
@@ -147,13 +172,14 @@ bool ESP32P4_FaceAi::begin(DetModel det, const char *db_path, const char *names_
   _det = detector;
 
   if (_db_path[0]) {
-    auto *rec = new (std::nothrow) HumanFaceRecognizer(std::string(_db_path));
+    auto *rec = new (std::nothrow)
+        HumanFaceRecognizer(std::string(_db_path), toFeatNative(feat), /*lazy_load=*/false);
     if (!rec) {
       ESP_LOGW(TAG, "HumanFaceRecognizer alloc failed — detect-only");
     } else {
       _rec = rec;
       int n = rec->get_num_feats();
-      ESP_LOGI(TAG, "FR ready db=%s feats=%d", _db_path, n);
+      ESP_LOGI(TAG, "FR ready db=%s feats=%d feat=%s", _db_path, n, featName(feat));
     }
   }
 
@@ -166,7 +192,8 @@ bool ESP32P4_FaceAi::begin(DetModel det, const char *db_path, const char *names_
   _enroll_deadline_ms = 0;
   int iw = 320, ih = 240;
   inferSize(&iw, &ih);
-  ESP_LOGI(TAG, "ready det=%d rec=%d work_frame=%dx%d", (int)det, _rec ? 1 : 0, iw, ih);
+  ESP_LOGI(TAG, "ready det=%d rec=%d feat=%s work_frame=%dx%d", (int)det, _rec ? 1 : 0,
+           featName(feat), iw, ih);
   return true;
 }
 
@@ -196,7 +223,15 @@ bool ESP32P4_FaceAi::setDetModel(DetModel m) {
   char db[64], names[64];
   strncpy(db, _db_path, sizeof(db));
   strncpy(names, _names_path, sizeof(names));
-  return begin(m, db[0] ? db : nullptr, names[0] ? names : nullptr);
+  return begin(m, db[0] ? db : nullptr, names[0] ? names : nullptr, _feat_model);
+}
+
+bool ESP32P4_FaceAi::setFeatModel(FeatModel f) {
+  if (f == _feat_model && _rec) return true;
+  char db[64], names[64];
+  strncpy(db, _db_path, sizeof(db));
+  strncpy(names, _names_path, sizeof(names));
+  return begin(_det_model, db[0] ? db : nullptr, names[0] ? names : nullptr, f);
 }
 
 bool ESP32P4_FaceAi::ensureRgb(size_t pixels) {

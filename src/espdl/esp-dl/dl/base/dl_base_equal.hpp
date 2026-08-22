@@ -21,3 +21,4 @@ void elemwise_equal(elemwiseArgsType<int16_t, bool> *args);
 
 } // namespace base
 } // namespace dl
+

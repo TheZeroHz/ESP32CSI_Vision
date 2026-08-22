@@ -122,3 +122,4 @@ template void requantize_linear<int16_t, int8_t>(void *const args_ptr);
 
 } // namespace base
 } // namespace dl
+

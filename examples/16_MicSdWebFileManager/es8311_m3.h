@@ -1,6 +1,6 @@
 /**
- * Guition JC-ESP32P4-M3 onboard ES8311 mic (I2C + I2S pin map).
- * Adapted from esp32-ai mictest for ESP32CSI_Vision examples.
+ * Pin map used by 15/16. Numbers come from board_config.h
+ * (ESP32CSI_MIC_* aliases from CFG_MIC_*) when board_config.h is included first.
  */
 #pragma once
 
@@ -8,48 +8,91 @@
 #include <Wire.h>
 #include <ESP_I2S.h>
 
-// Guition JC-ESP32P4-M3 codec / I2S pins
 #ifndef ESP32P4_M3_I2C_SDA
+#ifdef ESP32CSI_MIC_SDA
+#define ESP32P4_M3_I2C_SDA ESP32CSI_MIC_SDA
+#else
 #define ESP32P4_M3_I2C_SDA 7
 #endif
+#endif
 #ifndef ESP32P4_M3_I2C_SCL
+#ifdef ESP32CSI_MIC_SCL
+#define ESP32P4_M3_I2C_SCL ESP32CSI_MIC_SCL
+#else
 #define ESP32P4_M3_I2C_SCL 8
 #endif
+#endif
 #ifndef ESP32P4_M3_ES8311_ADDR
+#ifdef ESP32CSI_MIC_ADDR
+#define ESP32P4_M3_ES8311_ADDR ESP32CSI_MIC_ADDR
+#else
 #define ESP32P4_M3_ES8311_ADDR 0x18
 #endif
+#endif
 #ifndef ESP32P4_M3_I2S_MCLK
+#ifdef ESP32CSI_MIC_MCLK
+#define ESP32P4_M3_I2S_MCLK ESP32CSI_MIC_MCLK
+#else
 #define ESP32P4_M3_I2S_MCLK 13
 #endif
+#endif
 #ifndef ESP32P4_M3_I2S_BCLK
+#ifdef ESP32CSI_MIC_BCLK
+#define ESP32P4_M3_I2S_BCLK ESP32CSI_MIC_BCLK
+#else
 #define ESP32P4_M3_I2S_BCLK 12
 #endif
+#endif
 #ifndef ESP32P4_M3_I2S_WS
+#ifdef ESP32CSI_MIC_WS
+#define ESP32P4_M3_I2S_WS ESP32CSI_MIC_WS
+#else
 #define ESP32P4_M3_I2S_WS 10
 #endif
+#endif
 #ifndef ESP32P4_M3_I2S_DOUT
+#ifdef ESP32CSI_MIC_DOUT
+#define ESP32P4_M3_I2S_DOUT ESP32CSI_MIC_DOUT
+#else
 #define ESP32P4_M3_I2S_DOUT 9
 #endif
+#endif
 #ifndef ESP32P4_M3_I2S_DIN
+#ifdef ESP32CSI_MIC_DIN
+#define ESP32P4_M3_I2S_DIN ESP32CSI_MIC_DIN
+#else
 #define ESP32P4_M3_I2S_DIN 48
 #endif
+#endif
 #ifndef ESP32P4_M3_ES8311_PA
+#ifdef ESP32CSI_MIC_PA
+#define ESP32P4_M3_ES8311_PA ESP32CSI_MIC_PA
+#else
 #define ESP32P4_M3_ES8311_PA 11
+#endif
+#endif
+
+#ifndef ESP32P4_M3_ES8311_WIRE
+#ifdef ESP32CSI_MIC_WIRE
+#define ESP32P4_M3_ES8311_WIRE ESP32CSI_MIC_WIRE
+#else
+#define ESP32P4_M3_ES8311_WIRE Wire
+#endif
 #endif
 
 static inline bool es8311_write(uint8_t reg, uint8_t val) {
-  Wire.beginTransmission(ESP32P4_M3_ES8311_ADDR);
-  Wire.write(reg);
-  Wire.write(val);
-  return Wire.endTransmission() == 0;
+  ESP32P4_M3_ES8311_WIRE.beginTransmission(ESP32P4_M3_ES8311_ADDR);
+  ESP32P4_M3_ES8311_WIRE.write(reg);
+  ESP32P4_M3_ES8311_WIRE.write(val);
+  return ESP32P4_M3_ES8311_WIRE.endTransmission() == 0;
 }
 
 static inline bool es8311_read(uint8_t reg, uint8_t *val) {
-  Wire.beginTransmission(ESP32P4_M3_ES8311_ADDR);
-  Wire.write(reg);
-  if (Wire.endTransmission(false) != 0) return false;
-  if (Wire.requestFrom((int)ESP32P4_M3_ES8311_ADDR, 1) != 1) return false;
-  *val = (uint8_t)Wire.read();
+  ESP32P4_M3_ES8311_WIRE.beginTransmission(ESP32P4_M3_ES8311_ADDR);
+  ESP32P4_M3_ES8311_WIRE.write(reg);
+  if (ESP32P4_M3_ES8311_WIRE.endTransmission(false) != 0) return false;
+  if (ESP32P4_M3_ES8311_WIRE.requestFrom((int)ESP32P4_M3_ES8311_ADDR, 1) != 1) return false;
+  *val = (uint8_t)ESP32P4_M3_ES8311_WIRE.read();
   return true;
 }
 
@@ -103,8 +146,8 @@ static inline bool es8311_init_mic() {
 }
 
 static inline bool es8311_i2s_begin(I2SClass &i2s, int sample_rate) {
-  Wire.begin(ESP32P4_M3_I2C_SDA, ESP32P4_M3_I2C_SCL);
-  Wire.setClock(100000);
+  ESP32P4_M3_ES8311_WIRE.begin(ESP32P4_M3_I2C_SDA, ESP32P4_M3_I2C_SCL);
+  ESP32P4_M3_ES8311_WIRE.setClock(100000);
   es8311_pa_off();
 
   i2s.setPins(ESP32P4_M3_I2S_BCLK, ESP32P4_M3_I2S_WS, ESP32P4_M3_I2S_DOUT,

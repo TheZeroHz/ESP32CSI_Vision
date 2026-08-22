@@ -1,5 +1,6 @@
 #include "mem/ESP32P4_Psram.h"
 
+#include <stdint.h>
 #include <string.h>
 
 #include "esp_cache.h"
@@ -20,9 +21,26 @@ void esp32p4_psram_free(void *ptr) {
   if (ptr) heap_caps_free(ptr);
 }
 
-void esp32p4_psram_msync(void *ptr, size_t bytes) {
+static void cache_sync_range(void *ptr, size_t bytes, uint32_t flags) {
   if (!ptr || !bytes) return;
-  (void)esp_cache_msync(ptr, bytes, ESP_CACHE_MSYNC_FLAG_DIR_M2C);
+  const uintptr_t mask = (uintptr_t)(ESP32P4_CACHE_ALIGN - 1);
+  uintptr_t a = (uintptr_t)ptr;
+  uintptr_t start = a & ~mask;
+  uintptr_t end = (a + bytes + mask) & ~mask;
+#ifdef ESP_CACHE_MSYNC_FLAG_TYPE_DATA
+  flags |= ESP_CACHE_MSYNC_FLAG_TYPE_DATA;
+#endif
+  /* M2C rejects UNALIGNED — only C2M may use it, and we already snapped to 128B. */
+  flags &= ~ESP_CACHE_MSYNC_FLAG_UNALIGNED;
+  (void)esp_cache_msync((void *)start, (size_t)(end - start), flags);
+}
+
+void esp32p4_psram_msync(void *ptr, size_t bytes) {
+  cache_sync_range(ptr, bytes, ESP_CACHE_MSYNC_FLAG_DIR_M2C);
+}
+
+void esp32p4_psram_writeback(void *ptr, size_t bytes) {
+  cache_sync_range(ptr, bytes, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
 }
 
 bool esp32p4_psram_available() {
@@ -34,3 +52,10 @@ bool esp32p4_psram_available() {
 }
 
 size_t esp32p4_psram_free_size() { return heap_caps_get_free_size(MALLOC_CAP_SPIRAM); }
+
+void esp32p4_prefer_psram() {
+  if (!esp32p4_psram_available()) return;
+  // Allocations ≥ 1 KB go to PSRAM when possible. SDMMC + ESP-Hosted Wi-Fi DMA
+  // must stay in internal DRAM; the default 16 KB threshold starves them.
+  heap_caps_malloc_extmem_enable(1024);
+}

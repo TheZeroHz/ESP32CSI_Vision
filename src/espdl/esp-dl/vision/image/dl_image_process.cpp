@@ -514,7 +514,13 @@ void ImageTransformer::gen_xy_map()
             return;
         }
         m_x = (int *)heap_caps_malloc(dst_width * sizeof(int), MALLOC_CAP_DEFAULT | MALLOC_CAP_SIMD);
+        if (!m_x) m_x = (int *)heap_caps_malloc(dst_width * sizeof(int), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         m_y = (int *)heap_caps_malloc(dst_height * sizeof(int), MALLOC_CAP_DEFAULT | MALLOC_CAP_SIMD);
+        if (!m_y) m_y = (int *)heap_caps_malloc(dst_height * sizeof(int), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (!m_x || !m_y) {
+            ESP_LOGE(TAG, "xy map alloc failed");
+            return;
+        }
         m_inv_scale_x = static_cast<float>(src_width) / dst_width;
         m_inv_scale_y = static_cast<float>(src_height) / dst_height;
         m_scale_x = 1.f / m_inv_scale_x;
@@ -554,3 +560,4 @@ void ImageTransformer::gen_xy_map()
 }
 } // namespace image
 } // namespace dl
+

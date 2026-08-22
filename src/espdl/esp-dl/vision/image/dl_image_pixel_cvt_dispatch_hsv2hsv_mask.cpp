@@ -24,3 +24,4 @@ template void pixel_cvt_dispatch_hsv2hsv_mask<ImageTransformer::TransformNNFunct
     const ImageTransformer::TransformNNFunctor<false> &func, pix_cvt_t pix_cvt_type, const pix_cvt_param_t &param);
 } // namespace image
 } // namespace dl
+

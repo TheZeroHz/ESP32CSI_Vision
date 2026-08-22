@@ -26,7 +26,7 @@
 #if CONFIG_IDF_TARGET_ESP32
 #define CONFIG_DEFAULT_ASSIGN_CORE \
     {                              \
-    } // TODO: 多核 task 完成时，改成默认 0,1
+    } // TODO: å¤šæ ¸ task å®Œæˆæ—¶ï¼Œæ”¹æˆé»˜è®¤ 0,1
 #elif CONFIG_IDF_TARGET_ESP32S2
 #define CONFIG_DEFAULT_ASSIGN_CORE \
     {                              \
@@ -34,7 +34,7 @@
 #elif CONFIG_IDF_TARGET_ESP32S3
 #define CONFIG_DEFAULT_ASSIGN_CORE \
     {                              \
-    } // TODO: 多核 task 完成时，改成默认 0,1
+    } // TODO: å¤šæ ¸ task å®Œæˆæ—¶ï¼Œæ”¹æˆé»˜è®¤ 0,1
 #elif CONFIG_IDF_TARGET_ESP32C3
 #define CONFIG_DEFAULT_ASSIGN_CORE \
     {                              \
@@ -183,3 +183,4 @@ typedef struct {
     uint32_t latency; /*!< module latency */
 } module_info;        /*!< module info */
 } // namespace dl
+

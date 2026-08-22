@@ -1,8 +1,8 @@
 {
   "name": "ESP32CSI_Vision",
-  "version": "3.1.0",
-  "description": "ESP32 MIPI CSI computer vision for Arduino & ESP-IDF: OV5647/IMX708, PSRAM frames, HW JPEG, PPA/DSP, WiFi MJPEG UI, ESP-DL face detect. SoC-agnostic CSI naming (P4 today). By Rakib Hasan (@thezerohz).",
-  "keywords": "esp32, mipi-csi, csi, csi-camera, esp32-p4, esp32p4, ov5647, imx708, computer-vision, vision, jpeg, mjpeg, psram, isp, ppa, face-detection, esp-dl, esp-who, arduino, webcam, embedded-vision, guition",
+  "version": "3.25.0",
+  "description": "ESP32 MIPI CSI computer vision for Arduino & ESP-IDF: OV5647/IMX708/IMX477/IMX462, PSRAM frames, HW JPEG, PPA/DSP, WiFi MJPEG UI, full ESP-DL model zoo (face, COCO, pose, seg, OCR, ReID). SoC-agnostic CSI naming (P4 today). By Rakib Hasan (@thezerohz).",
+  "keywords": "esp32, mipi-csi, csi, csi-camera, esp32-p4, esp32p4, ov5647, imx708, imx477, imx462, computer-vision, vision, jpeg, mjpeg, psram, isp, ppa, face-detection, object-detection, coco, yolo, esp-dl, esp-who, arduino, webcam, embedded-vision, guition",
   "repository": {
     "type": "git",
     "url": "https://github.com/thezerohz/ESP32CSI_Vision.git"

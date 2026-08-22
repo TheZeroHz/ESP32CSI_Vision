@@ -155,3 +155,4 @@ struct RGB8882HSV<RGBSwap, ExtraProcess> {
 };
 } // namespace image
 } // namespace dl
+

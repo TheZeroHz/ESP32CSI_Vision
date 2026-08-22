@@ -361,7 +361,7 @@ private:
     uint32_t l2dbus_miss_cnt_e;
     uint32_t l2dbus_conflict_cnt_s;
     uint32_t l2dbus_conflict_cnt_e;
-    uint32_t l2dbus_nxtlvl_cnt_s; // 访问下一级存储(flash/psram)计数
+    uint32_t l2dbus_nxtlvl_cnt_s; // è®¿é—®ä¸‹ä¸€çº§å­˜å‚¨(flash/psram)è®¡æ•°
     uint32_t l2dbus_nxtlvl_cnt_e;
     uint32_t l1dbus_hit_cnt_s;
     uint32_t l1dbus_hit_cnt_e;
@@ -569,3 +569,4 @@ public:
 };
 } // namespace tool
 } // namespace dl
+

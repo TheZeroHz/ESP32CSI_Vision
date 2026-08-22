@@ -56,3 +56,4 @@ public:
     float get_thresh() const { return m_thr; }
     HumanFaceFeat *get_feat_model();
 };
+

@@ -141,3 +141,4 @@ struct RGB5652Gray<RGB565BE, RGBSwap, ExtraProcess> {
 };
 } // namespace image
 } // namespace dl
+
